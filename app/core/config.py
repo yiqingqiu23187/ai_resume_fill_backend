@@ -32,9 +32,9 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_HOSTS: List[str] = ["*"]
     
-    # AI Service
-    OPENAI_API_KEY: Optional[str] = None
-    AI_MODEL: str = "gpt-3.5-turbo"
+    # AI Service (Dashscope - 阿里千问)
+    DASHSCOPE_API_KEY: Optional[str] = None
+    AI_MODEL: str = "qwen-turbo"
     
     # Activation Code Settings
     DEFAULT_ACTIVATION_USES: int = 5

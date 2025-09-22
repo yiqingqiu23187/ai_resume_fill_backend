@@ -1,9 +1,13 @@
 from fastapi import APIRouter
+from app.api.v1.endpoints import auth, users, activation, admin
 
 api_router = APIRouter()
 
-# Placeholder for future route imports
-# from app.api.v1.endpoints import auth, users, resumes, activation, matching
+# 包含各模块的路由
+api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
+api_router.include_router(users.router, prefix="/users", tags=["用户管理"])
+api_router.include_router(activation.router, prefix="/activation", tags=["激活码管理"])
+api_router.include_router(admin.router, prefix="/admin", tags=["管理员"])
 
 @api_router.get("/status")
 async def api_status():
