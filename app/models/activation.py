@@ -47,12 +47,12 @@ class ActivationCode(Base):
         comment="激活码状态"
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         comment="创建时间"
     )
     expires_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         nullable=True,
         comment="过期时间"
     )
@@ -92,7 +92,7 @@ class UserActivation(Base):
         comment="剩余使用次数"
     )
     activated_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         comment="激活时间"
     )

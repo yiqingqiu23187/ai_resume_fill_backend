@@ -34,12 +34,12 @@ class Resume(Base):
         comment="简历字段数据JSON - 灵活的key-value结构"
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         comment="创建时间"
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         onupdate=func.now(),
         comment="更新时间"

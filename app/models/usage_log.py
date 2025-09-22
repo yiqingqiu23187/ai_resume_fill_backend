@@ -38,7 +38,7 @@ class UsageLog(Base):
         comment="成功填写的字段数量"
     )
     used_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         comment="使用时间"
     )

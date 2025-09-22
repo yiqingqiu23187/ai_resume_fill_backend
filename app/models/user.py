@@ -42,12 +42,12 @@ class User(Base):
         comment="用户状态"
     )
     created_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         comment="创建时间"
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime(),
         server_default=func.now(),
         onupdate=func.now(),
         comment="更新时间"
