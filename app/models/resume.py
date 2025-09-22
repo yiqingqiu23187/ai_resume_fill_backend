@@ -7,7 +7,7 @@ from app.db.base import Base
 
 
 class Resume(Base):
-    """简历表模型"""
+    """简历表模型 - 使用灵活的key-value结构"""
     __tablename__ = "resumes"
 
     id = Column(
@@ -22,25 +22,16 @@ class Resume(Base):
         nullable=False,
         comment="关联用户ID"
     )
-    personal_info = Column(
-        JSON,
-        nullable=False,
-        comment="个人基本信息JSON"
+    title = Column(
+        String(200),
+        nullable=True,
+        comment="简历标题"
     )
-    education = Column(
+    fields = Column(
         JSON,
         nullable=False,
-        comment="教育经历JSON"
-    )
-    experience = Column(
-        JSON,
-        nullable=False,
-        comment="工作经验JSON"
-    )
-    skills = Column(
-        JSON,
-        nullable=False,
-        comment="技能信息JSON"
+        default=dict,
+        comment="简历字段数据JSON - 灵活的key-value结构"
     )
     created_at = Column(
         DateTime(timezone=True),
@@ -58,4 +49,4 @@ class Resume(Base):
     user = relationship("User", back_populates="resumes")
 
     def __repr__(self):
-        return f"<Resume(id={self.id}, user_id={self.user_id})>"
+        return f"<Resume(id={self.id}, title={self.title}, user_id={self.user_id})>"
