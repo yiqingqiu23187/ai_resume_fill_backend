@@ -142,7 +142,8 @@ class MatchingService:
 
         valid_field_types = {
             'text', 'select', 'date', 'email', 'tel', 'number',
-            'textarea', 'radio', 'checkbox', 'url'
+            'textarea', 'radio', 'checkbox', 'url', 'password',
+            'time', 'datetime-local', 'month', 'week', 'file'
         }
 
         for i, field in enumerate(form_fields):
