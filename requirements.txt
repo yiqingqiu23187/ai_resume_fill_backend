@@ -14,3 +14,5 @@ dashscope>=1.8.0
 httpx>=0.25.2
 email-validator>=2.0.0
 greenlet>=3.0.0
+beautifulsoup4>=4.12.0
+openai>=1.0.0

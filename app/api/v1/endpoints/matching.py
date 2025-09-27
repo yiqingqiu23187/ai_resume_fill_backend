@@ -2,6 +2,7 @@
 智能字段匹配相关API端点
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,10 +13,13 @@ from app.services.matching_service import MatchingService
 from app.schemas.matching import (
     FieldMatchRequest,
     FieldMatchResponse,
-    FieldMatchResult
+    FieldMatchResult,
+    HTMLAnalysisRequest,
+    HTMLAnalysisResponse
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/match-fields", response_model=FieldMatchResponse)
@@ -164,3 +168,67 @@ async def get_supported_field_types():
             }
         ]
     }
+
+
+@router.post("/analyze-html", response_model=HTMLAnalysisResponse)
+async def analyze_html_form(
+    request: HTMLAnalysisRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🎯 新功能：使用大模型分析HTML并识别表单结构
+    """
+    # 接口调用确认
+    logger.info(f"🔥 ANALYZE HTML API CALLED - 用户:{current_user.id}, 简历:{request.resume_id}, HTML长度:{len(request.html_content)}")
+
+    logger.info(f"🚀 API接收HTML分析请求 - 用户:{current_user.id}, 简历:{request.resume_id}, 网站:{request.website_url}")
+    logger.debug(f"📄 请求参数 - HTML长度:{len(request.html_content)}")
+
+    try:
+        # 调用HTML分析服务
+        logger.info(f"📞 调用MatchingService.analyze_html_with_llm - 用户:{current_user.id}")
+        success, analyzed_fields, form_structure, error_message = await MatchingService.analyze_html_with_llm(
+            db=db,
+            user_id=current_user.id,
+            resume_id=request.resume_id,
+            html_content=request.html_content,
+            website_url=request.website_url
+        )
+
+        logger.info(f"🔄 服务层返回结果 - 用户:{current_user.id}, 成功:{success}")
+
+        if not success:
+            logger.warning(f"⚠️ 服务层返回失败 - 用户:{current_user.id}, 错误:{error_message}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message
+            )
+
+        # 统计匹配结果
+        total_fields = len(analyzed_fields) if analyzed_fields else 0
+        matched_fields = len([f for f in analyzed_fields if f.get('matched_value')]) if analyzed_fields else 0
+
+        logger.info(f"📊 统计完成 - 用户:{current_user.id}, 总字段:{total_fields}, 匹配字段:{matched_fields}")
+
+        response = HTMLAnalysisResponse(
+            success=True,
+            analyzed_fields=analyzed_fields,
+            total_fields=total_fields,
+            matched_fields=matched_fields,
+            form_structure=form_structure,
+            error_message=None
+        )
+
+        logger.info(f"✅ API请求成功 - 用户:{current_user.id}, 返回字段数:{total_fields}")
+        return response
+
+    except HTTPException as he:
+        logger.warning(f"⚠️ HTTP异常 - 用户:{current_user.id}, 状态码:{he.status_code}, 详情:{he.detail}")
+        raise he
+    except Exception as e:
+        logger.error(f"❌ API异常 - 用户:{current_user.id}, 异常类型:{type(e).__name__}, 异常信息:{str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"HTML分析失败: {str(e)}"
+        )

@@ -34,11 +34,14 @@ class Settings(BaseSettings):
     
     # AI Service (Dashscope - 阿里千问)
     DASHSCOPE_API_KEY: Optional[str] = None
-    AI_MODEL: str = "qwen-turbo"
+    AI_MODEL: str = "qwen-max"
     
     # Activation Code Settings
     DEFAULT_ACTIVATION_USES: int = 5
     
+    # Debug Settings
+    DEBUG: bool = False
+
     class Config:
         env_file = ".env"
         case_sensitive = True

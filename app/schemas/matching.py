@@ -61,3 +61,32 @@ class FieldTypeInfo(BaseModel):
 class SupportedFieldTypesResponse(BaseModel):
     """支持的字段类型响应"""
     field_types: List[FieldTypeInfo] = Field(..., description="支持的字段类型列表")
+
+
+# 🎯 新增：HTML分析相关的Schema
+class HTMLAnalysisRequest(BaseModel):
+    """HTML分析请求"""
+    resume_id: UUID = Field(..., description="简历ID")
+    html_content: str = Field(..., description="页面HTML内容")
+    website_url: Optional[str] = Field(None, description="网站URL")
+
+
+class AnalyzedField(BaseModel):
+    """分析出的字段信息"""
+    name: str = Field(..., description="字段名称")
+    type: str = Field(..., description="字段类型")
+    label: str = Field(..., description="字段标签")
+    selector: str = Field(..., description="CSS选择器")
+    required: bool = Field(False, description="是否必填")
+    category: Optional[str] = Field(None, description="字段分类：基本信息/教育经历/工作经验等")
+    matched_value: Optional[str] = Field(None, description="匹配的简历值")
+
+
+class HTMLAnalysisResponse(BaseModel):
+    """HTML分析响应"""
+    success: bool = Field(..., description="分析是否成功")
+    analyzed_fields: List[AnalyzedField] = Field(..., description="分析出的字段列表")
+    total_fields: int = Field(..., description="识别的字段总数")
+    matched_fields: int = Field(..., description="成功匹配的字段数")
+    form_structure: Optional[Dict[str, Any]] = Field(None, description="表单结构分析结果")
+    error_message: Optional[str] = Field(None, description="错误信息")
