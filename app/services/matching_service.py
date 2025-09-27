@@ -14,7 +14,8 @@ from app.services.resume_service import ResumeService
 from app.services.activation_service import ActivationService
 from app.schemas.matching import (
     FormFieldSchema,
-    FieldMatchResult
+    FieldMatchResult,
+    NestedFormStructure
 )
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,127 @@ class MatchingService:
             error_msg = f"字段匹配过程中发生错误: {str(e)}"
             logger.error(error_msg)
             return False, [], error_msg
+
+    @staticmethod
+    async def match_nested_form_fields(
+        db: AsyncSession,
+        user_id: UUID,
+        resume_id: UUID,
+        form_structure: NestedFormStructure,
+        website_url: Optional[str] = None
+    ) -> Tuple[bool, Dict[str, Any], int, int, str]:
+        """
+        匹配嵌套表单结构
+
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            resume_id: 简历ID
+            form_structure: 嵌套表单结构
+            website_url: 网站URL
+
+        Returns:
+            Tuple[success, matched_data, total_fields, matched_fields, error_message]
+        """
+        try:
+            # 获取简历
+            resume = await ResumeService.get_resume_by_id(db, resume_id, user_id)
+            if not resume:
+                return False, {}, 0, 0, "简历未找到"
+
+            # 提取简历文本和结构化数据
+            resume_text = ResumeService.extract_resume_text(resume)
+            resume_data = resume.fields if hasattr(resume, 'fields') else {}
+
+            if not resume_text.strip() and not resume_data:
+                return False, {}, 0, 0, "简历内容为空"
+
+            logger.info(f"开始匹配嵌套表单结构，用户: {user_id}, 简历: {resume_id}")
+
+            # 调用AI服务进行嵌套匹配
+            ai_success, matched_data, ai_error = await AIService.match_nested_form_fields(
+                resume_text=resume_text,
+                resume_data=resume_data,
+                form_structure=form_structure.model_dump()
+            )
+
+            if not ai_success:
+                logger.error(f"AI嵌套匹配失败: {ai_error}")
+                return False, {}, 0, 0, ai_error
+
+            # 统计字段数量
+            total_fields = MatchingService._count_total_fields(form_structure.model_dump())
+            matched_fields = MatchingService._count_matched_fields(matched_data)
+
+            # 记录使用日志
+            await MatchingService._log_usage(
+                db, user_id, website_url or "unknown",
+                total_fields, matched_fields
+            )
+
+            # 扣减激活次数
+            use_success, use_message = await ActivationService.use_activation(db, user_id)
+            if not use_success:
+                logger.warning(f"激活次数扣减失败: {use_message}")
+
+            logger.info(f"嵌套字段匹配完成，总字段: {total_fields}, 匹配字段: {matched_fields}")
+            return True, matched_data, total_fields, matched_fields, ""
+
+        except Exception as e:
+            error_msg = f"嵌套字段匹配过程中发生错误: {str(e)}"
+            logger.error(error_msg)
+            return False, {}, 0, 0, error_msg
+
+    @staticmethod
+    def _count_total_fields(structure: Dict[str, Any]) -> int:
+        """递归统计表单结构中的总字段数"""
+        count = 0
+
+        def _count_recursive(struct: Dict[str, Any]) -> None:
+            nonlocal count
+
+            if isinstance(struct, dict):
+                if struct.get('type') == 'object':
+                    # 对象类型，递归统计fields中的字段
+                    fields = struct.get('fields', {})
+                    for field_config in fields.values():
+                        _count_recursive(field_config)
+                elif struct.get('type') == 'array':
+                    # 数组类型，统计item_structure中的字段
+                    item_structure = struct.get('item_structure', {})
+                    _count_recursive(item_structure)
+                else:
+                    # 简单字段类型
+                    count += 1
+
+                # 如果是根级字段结构（有fields属性但没有type）
+                if 'fields' in struct and 'type' not in struct:
+                    for field_config in struct['fields'].values():
+                        _count_recursive(field_config)
+
+        _count_recursive(structure)
+        return count
+
+    @staticmethod
+    def _count_matched_fields(data: Dict[str, Any]) -> int:
+        """递归统计匹配数据中的字段数"""
+        count = 0
+
+        def _count_recursive(obj: Any) -> None:
+            nonlocal count
+
+            if isinstance(obj, dict):
+                for value in obj.values():
+                    _count_recursive(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _count_recursive(item)
+            elif obj is not None and str(obj).strip():
+                # 非空字符串才算匹配成功的字段
+                count += 1
+
+        _count_recursive(data)
+        return count
 
 
     @staticmethod

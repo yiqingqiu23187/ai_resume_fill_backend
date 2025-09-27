@@ -12,7 +12,9 @@ from app.services.matching_service import MatchingService
 from app.schemas.matching import (
     FieldMatchRequest,
     FieldMatchResponse,
-    FieldMatchResult
+    FieldMatchResult,
+    NestedFieldMatchRequest,
+    NestedFieldMatchResponse
 )
 
 router = APIRouter()
@@ -25,7 +27,7 @@ async def match_resume_fields(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    智能匹配简历字段到表单
+    智能匹配简历字段到表单（旧版本，向后兼容）
     """
     # 验证表单字段格式
     is_valid, error_msg = MatchingService.validate_form_fields(request.form_fields)
@@ -59,8 +61,37 @@ async def match_resume_fields(
     )
 
 
+@router.post("/match-nested-fields", response_model=NestedFieldMatchResponse)
+async def match_nested_resume_fields(
+    request: NestedFieldMatchRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    智能匹配简历字段到嵌套表单结构
+    """
+    # 执行嵌套字段匹配
+    success, matched_data, total_fields, matched_fields, error_message = await MatchingService.match_nested_form_fields(
+        db=db,
+        user_id=current_user.id,
+        resume_id=request.resume_id,
+        form_structure=request.form_structure,
+        website_url=request.website_url
+    )
 
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_message
+        )
 
+    return NestedFieldMatchResponse(
+        success=True,
+        matched_data=matched_data,
+        total_fields=total_fields,
+        matched_fields=matched_fields,
+        error_message=None
+    )
 
 
 @router.get("/match-stats")
