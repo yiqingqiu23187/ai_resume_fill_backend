@@ -11,6 +11,9 @@ logging.basicConfig(
     force=True
 )
 
+# 🔕 禁用dashscope库的debug日志，避免输出所有stream chunk内容
+logging.getLogger('dashscope').setLevel(logging.WARNING)
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,

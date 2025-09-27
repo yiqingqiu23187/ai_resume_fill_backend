@@ -205,20 +205,25 @@ class AIService:
 
                 # 收集流式响应
                 ai_output = ""
+                chunk_count = 0
                 logger.debug("📡 开始接收流式数据...")
 
                 for response in responses:
                     if response.status_code == 200:
                         # 流式输出：使用最新的完整内容，不是增量拼接
                         ai_output = response.output.text  # 直接赋值，不是累加
-                        logger.debug(f"📦 接收数据块，当前总长度: {len(ai_output)}")
+                        chunk_count += 1
+                        # 只显示接收进度，不输出具体内容
+                        if chunk_count % 5 == 0:  # 每5个chunk显示一次进度
+                            logger.debug(f"📦 已接收 {chunk_count} 个数据块，当前总长度: {len(ai_output)}")
                     else:
                         error_msg = f"流式响应错误 - 状态码:{response.status_code}, 错误码:{getattr(response, 'code', 'unknown')}"
                         logger.error(f"❌ {error_msg}")
                         raise Exception(error_msg)
 
-                logger.info(f"✅ 流式接收完成 - 总输出长度:{len(ai_output)}")
-                logger.info(f"📝 AI完整输出:\n{ai_output}")
+                logger.info(f"✅ 流式接收完成 - 共接收 {chunk_count} 个数据块，总输出长度:{len(ai_output)}")
+                # 只在最后输出完整内容
+                logger.info(f"📝 AI最终输出:\n{ai_output}")
 
                 # 解析AI输出
                 logger.debug(f"🔍 开始解析AI输出...")
