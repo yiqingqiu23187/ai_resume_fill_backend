@@ -192,6 +192,10 @@ class AIService:
             logger.info(f"🤖 开始调用千问API - 模型:{settings.AI_MODEL}")
             logger.debug(f"🔑 API配置 - 有API密钥:{bool(settings.DASHSCOPE_API_KEY)}")
 
+            # 🔍 打印请求数据用于调试
+            logger.info(f"📝 完整Prompt内容:\n{prompt}")
+
+
             try:
                 logger.info("🌊 使用流式调用，避免超时问题...")
 
@@ -214,7 +218,7 @@ class AIService:
                         ai_output = response.output.text  # 直接赋值，不是累加
                         chunk_count += 1
                         # 只显示接收进度，不输出具体内容
-                        if chunk_count % 5 == 0:  # 每5个chunk显示一次进度
+                        if chunk_count % 100 == 0:  # 每5个chunk显示一次进度
                             logger.debug(f"📦 已接收 {chunk_count} 个数据块，当前总长度: {len(ai_output)}")
                     else:
                         error_msg = f"流式响应错误 - 状态码:{response.status_code}, 错误码:{getattr(response, 'code', 'unknown')}"
@@ -303,11 +307,6 @@ class AIService:
             if not form_elements:
                 logger.warning("⚠️ 未发现表单元素，降级使用基础清理")
                 return AIService._basic_html_cleanup(html_content)
-
-            # 🚨 元素数量限制
-            if len(form_elements) > 200:
-                logger.warning(f"⚠️ 表单元素过多({len(form_elements)}个)，限制为前200个")
-                form_elements = form_elements[:200]
 
             # Step 4: 重构HTML
             rebuild_start = time.time()
@@ -603,9 +602,6 @@ class AIService:
         for attr in important_attrs:
             value = element.get(attr)
             if value and str(value).strip():
-                # 截断过长的值
-                if len(str(value)) > 50:
-                    value = str(value)[:47] + "..."
                 attrs.append(f'{attr}="{value}"')
 
         # 处理select元素的选项
@@ -620,47 +616,59 @@ class AIService:
     @staticmethod
     def _simplify_select_options(select_element):
         """
-        🎯 极度简化select选项 - 只保留前3个和"其他"类选项
+        🎯 智能简化select选项 - 基于语义重要性筛选
         """
         options = select_element.find_all('option')
 
-        if len(options) <= 5:
-            # 选项较少，全部保留但简化
+        if len(options) <= 8:
+            # 选项较少，全部保留
             simplified_options = []
             for opt in options:
                 value = opt.get('value', '')
                 text = opt.get_text(strip=True)
                 if text:
-                    # 截断过长的值和文本
-                    if len(value) > 30:
-                        value = value[:27] + "..."
-                    if len(text) > 20:
-                        text = text[:17] + "..."
                     simplified_options.append(f'<option value="{value}">{text}</option>')
             return ''.join(simplified_options)
         else:
-            # 选项很多，只保留代表性的
+            # 选项很多，智能筛选重要选项
             simplified_options = []
+            important_options = []
+            regular_options = []
 
-            # 保留前3个选项
-            for i, opt in enumerate(options[:3]):
-                value = opt.get('value', '')[:20]  # 限制长度
-                text = opt.get_text(strip=True)[:15]  # 限制长度
-                if text:
+            # 分类选项：重要选项 vs 普通选项
+            for opt in options:
+                value = opt.get('value', '')
+                text = opt.get_text(strip=True).lower()
+
+                # 识别重要选项（默认值、提示性选项）
+                if (not value or value == '0' or
+                    any(keyword in text for keyword in ['请选择', '选择', '--', '其他', '其它', 'select', 'choose', 'other', 'none'])):
+                    important_options.append(opt)
+                else:
+                    regular_options.append(opt)
+
+            # 添加所有重要选项
+            for opt in important_options:
+                value = opt.get('value', '')
+                text = opt.get_text(strip=True)
+                simplified_options.append(f'<option value="{value}">{text}</option>')
+
+            # 从普通选项中选择代表性的（最多10个）
+            max_regular = min(10, len(regular_options))
+            if max_regular > 0:
+                # 均匀采样
+                step = len(regular_options) // max_regular if max_regular > 0 else 1
+                sampled_options = regular_options[::max(1, step)][:max_regular]
+
+                for opt in sampled_options:
+                    value = opt.get('value', '')
+                    text = opt.get_text(strip=True)
                     simplified_options.append(f'<option value="{value}">{text}</option>')
 
-            # 如果有很多选项，添加省略提示
-            if len(options) > 3:
-                simplified_options.append(f'<!-- ...还有{len(options)-3}个选项 -->')
-
-                # 查找并保留"其他"、"请选择"等重要选项
-                for opt in options[3:]:
-                    text = opt.get_text(strip=True).lower()
-                    if any(keyword in text for keyword in ['其他', '其它', '请选择', 'other', 'select']):
-                        value = opt.get('value', '')[:20]
-                        text = opt.get_text(strip=True)[:15]
-                        simplified_options.append(f'<option value="{value}">{text}</option>')
-                        break  # 只保留第一个匹配的
+            # 如果还有未包含的选项，添加提示
+            total_included = len(important_options) + min(10, len(regular_options))
+            if len(options) > total_included:
+                simplified_options.append(f'<!-- ...还有{len(options) - total_included}个选项 -->')
 
             return ''.join(simplified_options)
 
@@ -702,11 +710,6 @@ class AIService:
 
         # 压缩空白
         html_content = re.sub(r'\s+', ' ', html_content)
-
-        # 限制长度
-        if len(html_content) > 50000:
-            html_content = html_content[:50000] + "..."
-            logger.warning("HTML内容过长，已截断处理")
 
         return html_content.strip()
 
