@@ -11,56 +11,12 @@ from app.db.deps import get_db
 from app.models.user import User
 from app.services.matching_service import MatchingService
 from app.schemas.matching import (
-    FieldMatchRequest,
-    FieldMatchResponse,
-    FieldMatchResult,
     HTMLAnalysisRequest,
     HTMLAnalysisResponse
 )
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-@router.post("/match-fields", response_model=FieldMatchResponse)
-async def match_resume_fields(
-    request: FieldMatchRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    智能匹配简历字段到表单
-    """
-    # 验证表单字段格式
-    is_valid, error_msg = MatchingService.validate_form_fields(request.form_fields)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
-        )
-
-    # 执行字段匹配
-    success, matches, error_message = await MatchingService.match_resume_fields(
-        db=db,
-        user_id=current_user.id,
-        resume_id=request.resume_id,
-        form_fields=request.form_fields,
-        website_url=request.website_url
-    )
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_message
-        )
-
-    return FieldMatchResponse(
-        success=True,
-        matches=matches,
-        total_fields=len(request.form_fields),
-        matched_fields=len([m for m in matches if m.matched_value]),
-        error_message=None
-    )
 
 
 

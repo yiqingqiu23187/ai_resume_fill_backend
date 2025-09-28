@@ -183,58 +183,6 @@ class ResumeService:
         return result.scalar() or 0
 
     @staticmethod
-    def extract_resume_text(resume: Resume) -> str:
-        """提取简历的文本内容，用于AI匹配"""
-        if not resume.fields:
-            return ""
-
-        text_parts = []
-
-        # 遍历所有字段，生成文本
-        for key, value in resume.fields.items():
-            if value and str(value).strip():
-                text_parts.append(f"{key}: {value}")
-
-        return "\n".join(text_parts)
-
-    @staticmethod
-    def search_resumes_by_field(
-        resumes: List[Resume],
-        field_key: str,
-        field_value: str
-    ) -> List[Resume]:
-        """在简历列表中搜索包含特定字段值的简历"""
-        matching_resumes = []
-
-        for resume in resumes:
-            if resume.fields and field_key in resume.fields:
-                if field_value.lower() in resume.fields[field_key].lower():
-                    matching_resumes.append(resume)
-
-        return matching_resumes
-
-    @staticmethod
-    def get_resume_fields_by_category(resume: Resume) -> dict:
-        """根据常见字段分类返回分组的字段数据"""
-        if not resume.fields:
-            return {}
-
-        from app.schemas.resume import COMMON_RESUME_FIELDS
-
-        categorized = {}
-        remaining_fields = resume.fields.copy()
-
-        # 按预定义分类整理字段
-        for category, preset_fields in COMMON_RESUME_FIELDS.items():
-            categorized[category] = {}
-            for field_info in preset_fields:
-                field_key = field_info["key"]
-                if field_key in resume.fields:
-                    categorized[category][field_key] = resume.fields[field_key]
-                    remaining_fields.pop(field_key, None)
-
-        # 处理未分类的字段
-        if remaining_fields:
-            categorized["其他"] = remaining_fields
-
-        return categorized
+    def get_resume_data(resume: Resume) -> dict:
+        """获取简历数据，直接返回JSON格式供AI使用"""
+        return resume.fields or {}

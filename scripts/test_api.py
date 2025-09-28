@@ -218,65 +218,7 @@ def test_get_resume(token, resume_id):
         return None
 
 
-def test_match_fields(token, resume_id):
-    """测试字段匹配"""
-    print_header("测试字段匹配API")
-
-    # 表单字段
-    form_fields = [
-        {
-            "name": "fullName",
-            "type": "text",
-            "label": "姓名",
-            "placeholder": "请输入您的姓名"
-        },
-        {
-            "name": "email",
-            "type": "email",
-            "label": "邮箱",
-            "placeholder": "请输入邮箱地址"
-        },
-        {
-            "name": "phone",
-            "type": "tel",
-            "label": "联系电话"
-        },
-        {
-            "name": "education",
-            "type": "select",
-            "label": "学历",
-            "options": ["高中", "大专", "本科", "硕士", "博士"]
-        },
-        {
-            "name": "workYears",
-            "type": "select",
-            "label": "工作年限",
-            "options": ["应届毕业生", "1-3年", "3-5年", "5-10年", "10年以上"]
-        }
-    ]
-
-    data = {
-        "resume_id": resume_id,
-        "form_fields": form_fields,
-        "website_url": "https://jobs.example.com"
-    }
-
-    response = api_request("POST", "matching/match-fields", data, token)
-    print_response(response)
-
-    if response.status_code == 200:
-        result = response.json()
-        matches = result.get("matches", [])
-        print(f"✅ 字段匹配成功: 匹配数量={len(matches)}")
-
-        # 打印匹配结果
-        for match in matches:
-            print(f"  - {match['field_name']}: {match['matched_value']}")
-
-        return matches
-    else:
-        print(f"❌ 字段匹配失败")
-        return []
+# 注意：已删除 test_match_fields 函数，现在只使用 HTML 分析功能
 
 
 def test_get_match_stats(token):
