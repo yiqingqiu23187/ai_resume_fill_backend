@@ -14,7 +14,55 @@ logger = logging.getLogger(__name__)
 class AIService:
     """AI服务类"""
 
+    @staticmethod
+    async def analyze_with_prompt(prompt: str) -> str:
+        """
+        🎯 使用提示词调用大模型 - 通用方法
 
+        Args:
+            prompt: 提示词内容
+
+        Returns:
+            大模型响应文本
+        """
+        try:
+            logger.info(f"🤖 开始调用千问API - 提示词长度:{len(prompt)}")
+            logger.debug(f"🔑 API配置 - 有API密钥:{bool(settings.DASHSCOPE_API_KEY)}")
+
+            if not settings.DASHSCOPE_API_KEY:
+                raise Exception("DASHSCOPE_API_KEY未配置")
+
+            # 使用流式调用
+            responses = Generation.call(
+                model=settings.AI_MODEL,
+                prompt=prompt,
+                api_key=settings.DASHSCOPE_API_KEY,
+                stream=True
+            )
+
+            # 收集流式响应
+            ai_output = ""
+            chunk_count = 0
+            logger.debug("📡 开始接收流式数据...")
+
+            for response in responses:
+                if response.status_code == 200:
+                    ai_output = response.output.text
+                    chunk_count += 1
+                    if chunk_count % 10 == 0:
+                        logger.debug(f"📦 已接收 {chunk_count} 个数据块")
+                else:
+                    error_msg = f"流式响应错误 - 状态码:{response.status_code}"
+                    logger.error(f"❌ {error_msg}")
+                    raise Exception(error_msg)
+
+            logger.info(f"✅ 流式接收完成 - 共接收 {chunk_count} 个数据块，总输出长度:{len(ai_output)}")
+            return ai_output
+
+        except Exception as e:
+            error_msg = f"API调用失败: {str(e)}"
+            logger.error(f"❌ {error_msg}", exc_info=True)
+            raise Exception(error_msg)
 
     @staticmethod
     async def analyze_html_form_structure(
