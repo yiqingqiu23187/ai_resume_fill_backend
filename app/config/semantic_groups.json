@@ -1,0 +1,137 @@
+{
+  "semantic_groups": {
+    "basic_info": {
+      "title": "基本信息",
+      "priority": 1,
+      "keywords": {
+        "name": ["姓名", "真实姓名", "用户名", "名字", "全名", "name", "真名", "称呼"],
+        "gender": ["性别", "gender", "男女", "性別"],
+        "phone": ["手机", "电话", "联系电话", "手机号", "联系方式", "phone", "mobile", "tel", "电话号码", "手机号码"],
+        "email": ["邮箱", "邮件", "email", "e-mail", "电子邮件", "电子邮箱", "联系邮箱"],
+        "birth": ["出生", "生日", "出生日期", "生年月日", "birthday", "birth", "年龄相关", "生日日期"],
+        "id_card": ["身份证", "证件号", "身份证号", "id", "证件", "身份证号码", "个人证件"],
+        "address": ["地址", "住址", "居住地", "联系地址", "详细地址", "address", "location", "现住址", "家庭住址"],
+        "nationality": ["国籍", "民族", "nationality", "ethnicity", "籍贯"]
+      },
+      "patterns": [
+        "基本.*信息",
+        "个人.*资料",
+        "个人.*信息",
+        "基础.*资料"
+      ]
+    },
+
+    "education": {
+      "title": "教育背景",
+      "priority": 2,
+      "is_repeatable": true,
+      "keywords": {
+        "school": ["学校", "院校", "毕业院校", "毕业学校", "就读学校", "university", "college", "school", "学院", "大学", "高校", "母校"],
+        "degree": ["学历", "学位", "education", "degree", "文凭", "毕业证", "教育程度", "最高学历"],
+        "major": ["专业", "学科", "major", "专业方向", "所学专业", "学习专业", "主修", "主修专业"],
+        "start_time": ["开始时间", "入学时间", "start", "from", "起始日期", "入学日期", "开始日期"],
+        "end_time": ["结束时间", "毕业时间", "end", "to", "结束日期", "毕业日期", "完成时间"],
+        "gpa": ["成绩", "GPA", "绩点", "平均分", "学习成绩", "总分"]
+      },
+      "patterns": [
+        "教育.*背景",
+        "教育.*经历",
+        "学习.*经历",
+        "毕业.*信息",
+        "学历.*信息",
+        "教育.*情况"
+      ],
+      "array_indicators": [
+        "\\[\\d+\\]",
+        "education\\[",
+        "edu_\\d+",
+        "school_\\d+",
+        "第.*个",
+        "education_\\d+"
+      ]
+    },
+
+    "work_experience": {
+      "title": "工作经历",
+      "priority": 3,
+      "is_repeatable": true,
+      "keywords": {
+        "company": ["公司", "企业", "单位", "工作单位", "公司名称", "企业名称", "company", "corporation", "employer", "组织", "机构", "雇主"],
+        "position": ["职位", "岗位", "职务", "position", "job", "title", "工作岗位", "担任职务", "职业", "角色"],
+        "start_time": ["开始时间", "入职时间", "start", "from", "起始日期", "入职日期", "工作开始"],
+        "end_time": ["结束时间", "离职时间", "end", "to", "结束日期", "离职日期", "工作结束"],
+        "salary": ["薪资", "工资", "薪水", "salary", "pay", "收入", "待遇", "薪酬", "月薪", "年薪"],
+        "description": ["描述", "职责", "工作内容", "description", "responsibility", "工作描述", "主要工作", "工作职责", "具体工作"]
+      },
+      "patterns": [
+        "工作.*经历",
+        "工作.*背景",
+        "职业.*经历",
+        "从业.*经历",
+        "实习.*经历",
+        "工作.*历程"
+      ],
+      "array_indicators": [
+        "\\[\\d+\\]",
+        "work\\[",
+        "job_\\d+",
+        "exp_\\d+",
+        "experience\\[",
+        "company_\\d+"
+      ]
+    },
+
+    "skills": {
+      "title": "技能特长",
+      "priority": 4,
+      "keywords": {
+        "language": ["语言", "外语", "英语", "language", "english", "语言能力", "外语水平"],
+        "programming": ["编程", "技术", "programming", "技能", "专业技能", "IT技能", "技术栈"],
+        "certificate": ["证书", "资格", "certificate", "认证", "职业资格", "专业证书"],
+        "driving": ["驾驶", "驾照", "driving", "driver", "驾驶证", "驾驶执照"],
+        "self_intro": ["自我介绍", "个人介绍", "简介", "自述", "个人简介", "自我评价", "introduction", "about"]
+      },
+      "patterns": [
+        "技能.*特长",
+        "专业.*技能",
+        "个人.*技能",
+        "能力.*水平",
+        "特长.*爱好"
+      ]
+    },
+
+    "additional_info": {
+      "title": "其他信息",
+      "priority": 5,
+      "keywords": {
+        "hobby": ["爱好", "兴趣", "hobby", "interest", "个人爱好", "业余爱好"],
+        "reference": ["推荐人", "联系人", "reference", "推荐", "证明人"],
+        "notes": ["备注", "说明", "其他", "note", "additional", "补充说明", "额外信息"]
+      }
+    }
+  },
+
+  "matching_config": {
+    "similarity_threshold": 0.6,
+    "fuzzy_match_enabled": true,
+    "case_sensitive": false,
+    "partial_match_enabled": true,
+    "synonym_expansion": true,
+    "pattern_match_weight": 0.7,
+    "keyword_match_weight": 0.8,
+    "spatial_proximity_weight": 0.5
+  },
+
+  "array_detection": {
+    "min_similar_groups": 2,
+    "similarity_threshold": 0.8,
+    "spatial_proximity_threshold": 100,
+    "name_pattern_indicators": [
+      "\\[\\d+\\]",
+      "_\\d+$",
+      "\\d+$",
+      "第.{0,2}个",
+      "第.{0,2}条"
+    ]
+  }
+}
