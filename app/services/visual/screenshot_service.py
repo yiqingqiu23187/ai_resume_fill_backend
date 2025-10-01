@@ -108,6 +108,7 @@ class ScreenshotService:
             await page.close()
 
             result = {
+                "success": True,
                 "screenshot_path": str(screenshot_path),
                 "filename": filename,
                 "viewport": {
@@ -125,7 +126,10 @@ class ScreenshotService:
 
         except Exception as e:
             logger.error(f"❌ 截图生成失败: {str(e)}")
-            raise Exception(f"截图服务错误: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     async def take_screenshot_from_url(
         self,
@@ -186,6 +190,7 @@ class ScreenshotService:
             await page.close()
 
             result = {
+                "success": True,
                 "screenshot_path": str(screenshot_path),
                 "filename": filename,
                 "url": url,
@@ -204,7 +209,10 @@ class ScreenshotService:
 
         except Exception as e:
             logger.error(f"❌ URL截图生成失败: {str(e)}")
-            raise Exception(f"URL截图服务错误: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
     async def cleanup_old_screenshots(self, max_age_hours: int = 24):
         """

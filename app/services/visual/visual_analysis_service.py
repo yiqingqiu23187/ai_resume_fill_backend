@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .screenshot_service import screenshot_service
 from .bbox_service import bbox_service
+from ..cv.visual_analyzer import VisualLayoutAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,10 @@ class VisualAnalysisService:
         analysis_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        执行HTML视觉分析流程 - 简化版
+        执行HTML视觉分析流程 - 完整版
 
-        专注于字段识别和标签关联，移除复杂的区域分组逻辑
+        集成XY-Cut算法、形态学聚类、算法融合的完整CV分析流程
+        包含增强的标签关联逻辑，提供高质量的视觉分析结果
 
         Args:
             html_content: HTML页面内容
@@ -41,14 +43,14 @@ class VisualAnalysisService:
             analysis_config: 分析配置参数
 
         Returns:
-            视觉分析结果（专注字段识别）
+            完整的视觉分析结果，包含CV算法分析的区域信息
         """
         try:
             # 设置默认配置
             if analysis_config is None:
                 analysis_config = self._get_default_config()
 
-            logger.info(f"🔍 Phase 2简化版视觉分析 - 网站: {website_url}, HTML长度: {len(html_content)}")
+            logger.info(f"🔍 Phase 2完整版视觉分析 - 网站: {website_url}, HTML长度: {len(html_content)}")
 
             # 阶段1: 生成截图
             logger.info("📸 阶段1: 生成页面截图...")
@@ -60,8 +62,11 @@ class VisualAnalysisService:
                 wait_timeout=analysis_config.get('screenshot_timeout', 5000)
             )
 
-            # 阶段2: 提取BBOX坐标和字段信息
-            logger.info("📊 阶段2: 提取元素坐标和标签关联...")
+            if not screenshot_result.get('success'):
+                raise Exception(f"截图生成失败: {screenshot_result.get('error')}")
+
+            # 阶段2: 提取BBOX坐标和增强标签关联
+            logger.info("📊 阶段2: 提取元素坐标和增强标签关联...")
             bbox_result = await self.bbox_service.extract_element_bboxes(
                 html_content=html_content,
                 viewport_width=analysis_config.get('viewport_width', 1920),
@@ -71,11 +76,17 @@ class VisualAnalysisService:
             if not bbox_result.get('success'):
                 raise Exception(f"BBOX提取失败: {bbox_result.get('error')}")
 
-            # 阶段3: 基础空间关系分析
-            logger.info("🔗 阶段3: 分析基础空间关系...")
+            # 阶段3: 计算机视觉布局分析 (XY-Cut + 形态学聚类)
+            logger.info("🤖 阶段3: 执行CV算法布局分析...")
+            visual_layout_result = self._analyze_visual_layout(
+                screenshot_result, bbox_result, analysis_config
+            )
+
+            # 阶段4: 空间关系分析
+            logger.info("🔗 阶段4: 分析元素空间关系...")
             relationship_result = self.bbox_service.analyze_element_relationships(bbox_result)
 
-            # 整合最终结果 - 简化版
+            # 整合最终结果 - 完整版
             final_result = {
                 'success': True,
                 'website_url': website_url,
@@ -94,41 +105,85 @@ class VisualAnalysisService:
                     'viewport_info': bbox_result['viewport_info'],
                     'html_analysis': bbox_result['html_analysis']
                 },
+                'visual_layout': visual_layout_result,  # 新增：完整的视觉布局分析
                 'relationships': relationship_result,
-                'phase': 'field_identification_complete',  # 简化阶段标识
+                'phase': 'complete_visual_analysis',  # 完整版阶段标识
                 'ready_for_phase4': True,  # 准备好进行Phase 4结构识别
                 'next_phases': ['structure_recognition', 'template_generation']
             }
 
-            # 生成分析摘要
+            # 生成增强分析摘要
             summary = self._generate_analysis_summary(final_result)
             final_result['summary'] = summary
 
-            logger.info(f"✅ Phase 2简化版完成 - 元素: {bbox_result['total_elements']}个, 关系: {relationship_result.get('total_relationships', 0)}个")
-            logger.info(f"🎯 标签覆盖率: {summary.get('quality_metrics', {}).get('labeling_rate', 0)}% - 准备进入Phase 4")
+            logger.info(f"✅ Phase 2完整版完成 - 元素: {bbox_result['total_elements']}个, 关系: {relationship_result.get('total_relationships', 0)}个")
+            if visual_layout_result.get('success'):
+                logger.info(f"🎯 视觉区域: {visual_layout_result.get('total_regions', 0)}个, 算法: {visual_layout_result.get('algorithm', 'unknown')}")
+            logger.info(f"🏷️ 标签覆盖率: {summary.get('quality_metrics', {}).get('labeling_rate', 0)}% - 准备进入Phase 4")
 
             return final_result
 
         except Exception as e:
-            logger.error(f"❌ Phase 2简化版分析失败: {str(e)}", exc_info=True)
+            logger.error(f"❌ Phase 2完整版分析失败: {str(e)}", exc_info=True)
             return {
                 'success': False,
-                'error': f"Phase 2简化版错误: {str(e)}",
-                'phase': 'field_identification_error'
+                'error': f"Phase 2完整版错误: {str(e)}",
+                'phase': 'complete_visual_analysis_error'
             }
 
 
     def _get_default_config(self) -> Dict[str, Any]:
         """
-        获取默认的分析配置（简化版）
-        专注于基础视觉分析配置
+        获取默认的分析配置（完整版）
+        包含CV算法的完整配置参数
         """
         return {
             # 基础截图配置
             'viewport_width': 1920,
             'viewport_height': 1080,
             'full_page': True,
-            'screenshot_timeout': 5000
+            'screenshot_timeout': 5000,
+
+            # CV算法配置
+            'use_xy_cut': True,
+            'use_morphology': True,
+            'fusion_mode': 'hybrid',  # 'xy_cut', 'morphology', 'hybrid'
+
+            # XY-Cut算法配置
+            'xy_cut_config': {
+                'xy_cut_threshold': 12,
+                'min_region_width': 80,
+                'min_region_height': 40,
+                'max_recursion_depth': 4,
+                'merge_close_cuts': True,
+                'cut_merge_threshold': 20
+            },
+
+            # 形态学聚类配置
+            'morphology_config': {
+                'morphology_kernel_size': 25,
+                'min_cluster_size': 2,
+                'max_cluster_distance': 100,
+                'erosion_iterations': 1,
+                'dilation_iterations': 2,
+                'use_dbscan': True,
+                'dbscan_eps': 90,
+                'dbscan_min_samples': 2,
+                'filter_small_components': True,
+                'min_component_area': 1000
+            },
+
+            # 算法融合配置
+            'fusion_config': {
+                'overlap_threshold': 0.3,
+                'merge_similar_regions': True,
+                'similarity_threshold': 0.7,
+                'min_final_region_area': 1200,
+                'region_priority_weights': {
+                    'xy_cut': 0.6,
+                    'morphology': 0.4
+                }
+            }
         }
 
     def _generate_analysis_summary(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -174,6 +229,28 @@ class VisualAnalysisService:
                 else:
                     unlabeled_fields += 1
 
+            # 处理视觉布局分析数据
+            visual_layout_data = analysis_result.get('visual_layout', {})
+            visual_layout_summary = {
+                'available': visual_layout_data.get('success', False),
+                'algorithm': visual_layout_data.get('algorithm', 'none'),
+                'total_regions': visual_layout_data.get('total_regions', 0)
+            }
+
+            if visual_layout_data.get('success'):
+                # 添加CV算法的详细信息
+                if 'fusion_statistics' in visual_layout_data:
+                    fusion_stats = visual_layout_data['fusion_statistics']
+                    visual_layout_summary.update({
+                        'layout_quality': 'excellent' if visual_layout_data.get('total_regions', 0) > 0 else 'poor',
+                        'algorithm_contributions': {
+                            'xy_cut_regions': fusion_stats.get('input_regions', {}).get('xy_cut', 0),
+                            'morphology_regions': fusion_stats.get('input_regions', {}).get('morphology', 0),
+                            'final_regions': fusion_stats.get('output_regions', 0),
+                            'fusion_efficiency': fusion_stats.get('fusion_efficiency', {})
+                        }
+                    })
+
             return {
                 'total_elements': len(elements_list),
                 'element_types': element_types,
@@ -190,16 +267,63 @@ class VisualAnalysisService:
                     'aligned_elements': len(relationships_data.get('aligned_elements', [])),
                     'vertical_groups': relationships_data.get('summary', {}).get('vertical_groups', 0)
                 },
+                'visual_layout': visual_layout_summary,  # 新增：视觉布局摘要
                 'quality_metrics': {
                     'labeling_rate': round(labeled_fields / len(elements_list) * 100, 1) if elements_list else 0,
                     'fill_rate': round(filled_fields / len(elements_list) * 100, 1) if elements_list else 0,
-                    'structure_complexity': self._assess_structure_complexity(elements_list, relationships_data)
+                    'structure_complexity': self._assess_structure_complexity(elements_list, relationships_data),
+                    'cv_analysis_quality': 'excellent' if visual_layout_summary['available'] and visual_layout_summary['total_regions'] > 0 else 'basic'
                 }
             }
 
         except Exception as e:
             logger.warning(f"⚠️ 生成分析摘要时出错: {str(e)}")
             return {'error': str(e)}
+
+    def _analyze_visual_layout(
+        self,
+        screenshot_result: Dict[str, Any],
+        bbox_result: Dict[str, Any],
+        analysis_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        执行CV算法的视觉布局分析
+
+        Args:
+            screenshot_result: 截图结果
+            bbox_result: BBOX提取结果
+            analysis_config: 分析配置
+
+        Returns:
+            视觉布局分析结果
+        """
+        try:
+            # 创建视觉布局分析器
+            visual_analyzer = VisualLayoutAnalyzer(
+                screenshot_path=screenshot_result['screenshot_path'],
+                bbox_data=bbox_result,
+                config=analysis_config
+            )
+
+            # 执行布局分析
+            layout_result = visual_analyzer.analyze_layout()
+
+            if layout_result.get('success'):
+                logger.info(f"✅ CV算法分析成功 - 模式: {layout_result.get('algorithm', 'unknown')}")
+                if layout_result.get('total_regions'):
+                    logger.info(f"📊 识别区域: {layout_result['total_regions']}个")
+            else:
+                logger.warning(f"⚠️ CV算法分析失败: {layout_result.get('error')}")
+
+            return layout_result
+
+        except Exception as e:
+            logger.error(f"❌ 视觉布局分析异常: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'error': f"视觉布局分析错误: {str(e)}",
+                'algorithm': 'error'
+            }
 
 
     def _assess_structure_complexity(self, elements: List[Dict], relationships: Dict) -> str:

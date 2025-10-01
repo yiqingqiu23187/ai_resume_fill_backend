@@ -206,47 +206,175 @@ class BBoxService:
                     return selector;
                 }
 
-                // 查找关联的标签
+                // 增强的标签关联查找函数
                 function findAssociatedLabels(element) {
                     const labels = [];
 
-                    // 1. 通过for属性关联
+                    // 辅助函数：清理标签文本
+                    function cleanLabelText(text) {
+                        if (!text) return '';
+                        return text
+                            .replace(/[*:：\\s]+$/g, '') // 移除末尾的星号、冒号、空格
+                            .replace(/^\\s*[*]\\s*/, '') // 移除开头的星号
+                            .replace(/\\s+/g, ' ')      // 合并多个空格
+                            .replace(/必填|选填|可选/g, '') // 移除必填提示
+                            .trim();
+                    }
+
+                    // 辅助函数：添加标签（避免重复）
+                    function addLabel(text, type) {
+                        const cleanText = cleanLabelText(text);
+                        if (cleanText && cleanText.length >= 2 && cleanText.length <= 50) {
+                            // 检查是否已存在相同文本
+                            const exists = labels.some(label => label.text === cleanText);
+                            if (!exists) {
+                                labels.push({
+                                    text: cleanText,
+                                    association_type: type
+                                });
+                            }
+                        }
+                    }
+
+                    // 1. 通过for属性关联 (最可靠)
                     if (element.id) {
                         const forLabels = document.querySelectorAll(`label[for="${element.id}"]`);
                         forLabels.forEach(label => {
-                            labels.push({
-                                text: label.textContent.trim(),
-                                association_type: 'for_attribute'
-                            });
+                            addLabel(label.textContent, 'for_attribute');
                         });
                     }
 
                     // 2. 父级label元素
                     let parent = element.parentElement;
-                    while (parent && parent !== document.body) {
+                    let depth = 0;
+                    while (parent && parent !== document.body && depth < 5) {
                         if (parent.tagName.toLowerCase() === 'label') {
-                            labels.push({
-                                text: parent.textContent.trim(),
-                                association_type: 'parent_label'
-                            });
+                            // 排除input自身的文本
+                            const labelText = parent.textContent;
+                            const inputText = element.value || element.placeholder || '';
+                            const cleanText = labelText.replace(inputText, '');
+                            addLabel(cleanText, 'parent_label');
                             break;
                         }
                         parent = parent.parentElement;
+                        depth++;
                     }
 
-                    // 3. 邻近的标签文本（前面的兄弟元素）
+                    // 3. UI框架特殊结构识别
+
+                    // Ant Design 框架模式
+                    const antFormItem = element.closest('.ant-form-item');
+                    if (antFormItem) {
+                        const antLabel = antFormItem.querySelector('.ant-form-item-label label');
+                        if (antLabel) {
+                            addLabel(antLabel.textContent, 'antd_framework');
+                        }
+                    }
+
+                    // Element UI 框架模式
+                    const elFormItem = element.closest('.el-form-item');
+                    if (elFormItem) {
+                        const elLabel = elFormItem.querySelector('.el-form-item__label');
+                        if (elLabel) {
+                            addLabel(elLabel.textContent, 'element_ui_framework');
+                        }
+                    }
+
+                    // iView/View UI 框架模式
+                    const ivuFormItem = element.closest('.ivu-form-item');
+                    if (ivuFormItem) {
+                        const ivuLabel = ivuFormItem.querySelector('.ivu-form-item-label');
+                        if (ivuLabel) {
+                            addLabel(ivuLabel.textContent, 'iview_framework');
+                        }
+                    }
+
+                    // 通用form-item模式
+                    const genericFormItem = element.closest('[class*="form-item"], [class*="field"], [class*="input-group"], [class*="form-group"]');
+                    if (genericFormItem) {
+                        const possibleLabels = genericFormItem.querySelectorAll('label, [class*="label"], .control-label');
+                        possibleLabels.forEach(label => {
+                            if (label !== element && !label.contains(element)) {
+                                addLabel(label.textContent, 'form_item_pattern');
+                            }
+                        });
+                    }
+
+                    // 4. 邻近的标签文本（前面的兄弟元素）
                     let sibling = element.previousElementSibling;
                     let siblingCount = 0;
                     while (sibling && siblingCount < 3) {
                         const text = sibling.textContent.trim();
                         if (text && text.length < 50 && !text.includes('\\n')) {
-                            labels.push({
-                                text: text,
-                                association_type: 'sibling_text'
-                            });
+                            addLabel(text, 'sibling_text');
                         }
                         sibling = sibling.previousElementSibling;
                         siblingCount++;
+                    }
+
+                    // 5. 表格结构中的标签 (td前面的th或td)
+                    const cell = element.closest('td');
+                    if (cell) {
+                        // 检查同行的前一个单元格
+                        const prevCell = cell.previousElementSibling;
+                        if (prevCell) {
+                            addLabel(prevCell.textContent, 'table_header');
+                        }
+
+                        // 检查对应的表头
+                        const table = cell.closest('table');
+                        if (table) {
+                            const cellIndex = Array.from(cell.parentElement.children).indexOf(cell);
+                            const headerRow = table.querySelector('thead tr, tr:first-child');
+                            if (headerRow) {
+                                const headerCell = headerRow.children[cellIndex];
+                                if (headerCell) {
+                                    addLabel(headerCell.textContent, 'table_header');
+                                }
+                            }
+                        }
+                    }
+
+                    // 6. 查找附近的文本节点
+                    function findNearbyTextNodes(element, maxDistance = 3) {
+                        const textNodes = [];
+                        let parent = element.parentElement;
+
+                        for (let i = 0; i < maxDistance && parent; i++) {
+                            const walker = document.createTreeWalker(
+                                parent,
+                                NodeFilter.SHOW_TEXT,
+                                {
+                                    acceptNode: (node) => {
+                                        const text = node.textContent.trim();
+                                        return text && text.length > 1 && text.length < 30 ?
+                                            NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                                    }
+                                }
+                            );
+
+                            let node;
+                            while (node = walker.nextNode()) {
+                                if (!element.contains(node)) {
+                                    textNodes.push(node);
+                                }
+                            }
+                            parent = parent.parentElement;
+                        }
+                        return textNodes;
+                    }
+
+                    const nearbyTextNodes = findNearbyTextNodes(element);
+                    nearbyTextNodes.forEach(node => {
+                        addLabel(node.textContent, 'nearby_text');
+                    });
+
+                    // 7. 使用元素属性作为fallback
+                    if (labels.length === 0) {
+                        const attrLabel = element.placeholder || element.title || element.getAttribute('data-label') || element.getAttribute('aria-label');
+                        if (attrLabel) {
+                            addLabel(attrLabel, 'element_attribute');
+                        }
                     }
 
                     return labels;

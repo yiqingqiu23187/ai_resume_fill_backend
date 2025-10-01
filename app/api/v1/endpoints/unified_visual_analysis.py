@@ -15,7 +15,7 @@ from ....models.user import User
 from ....services.unified_visual_analysis_service import unified_visual_analysis_service
 from ....services.resume_service import ResumeService
 from ....schemas.visual_analysis_schemas import UnifiedAnalysisResult
-from ....core.database import get_db
+from ....core.deps import get_db
 
 logger = logging.getLogger(__name__)
 
