@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 
-from .semantic_group_analyzer import SemanticGroupAnalyzer
+from .html_structure_analyzer import HtmlStructureAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +18,8 @@ class StructureRecognitionService:
 
     def __init__(self):
         """初始化结构识别服务"""
-        # 加载语义分组分析器
-        config_path = Path(__file__).parent.parent.parent / "config" / "semantic_groups.json"
-        self.semantic_analyzer = SemanticGroupAnalyzer(str(config_path))
+        # 加载HTML结构分析器
+        self.html_analyzer = HtmlStructureAnalyzer()
         logger.info("🚀 Phase 4结构识别服务初始化完成")
 
     async def recognize_structure(self, phase2_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -44,8 +43,8 @@ class StructureRecognitionService:
                     'phase': 'phase4_input_validation_error'
                 }
 
-            # 执行语义分组分析
-            structure_result = self.semantic_analyzer.analyze_structure(phase2_result)
+            # 执行HTML结构分析
+            structure_result = self.html_analyzer.analyze_structure(phase2_result)
 
             if structure_result.get('success'):
                 # 增强结果信息

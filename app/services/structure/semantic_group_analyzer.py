@@ -107,8 +107,6 @@ class SemanticGroupAnalyzer:
             field_label = self._extract_field_label(field)
             field_name = field.get('name', '') or field.get('selector', '')
 
-            logger.debug(f"🔍 分析字段: {field_label} (name: {field_name})")
-
             # 进行语义匹配
             match_result = self.fuzzy_matcher.find_best_match(
                 field_label=field_label,
@@ -119,10 +117,10 @@ class SemanticGroupAnalyzer:
             enhanced_field = field.copy()
             if match_result:
                 enhanced_field['semantic_match'] = match_result
-                logger.debug(f"✅ 匹配成功: {match_result['group_title']} -> {match_result.get('field_type')} (得分: {match_result['score']:.2f})")
+                logger.info(f"✅ 匹配成功: '{field_label}' → {match_result['group_title']}.{match_result.get('field_type')} (得分: {match_result['score']:.2f})")
             else:
                 enhanced_field['semantic_match'] = None
-                logger.debug(f"⚠️ 未找到匹配: {field_label}")
+                logger.info(f"⚠️ 未找到匹配: '{field_label}' (name: {field_name})")
 
             matched_fields.append(enhanced_field)
 
@@ -518,7 +516,7 @@ class SemanticGroupAnalyzer:
 
     def _extract_field_label(self, field: Dict[str, Any]) -> str:
         """
-        提取字段标签文本
+        提取字段标签文本 - 优化版
 
         Args:
             field: 字段数据
@@ -526,20 +524,23 @@ class SemanticGroupAnalyzer:
         Returns:
             字段标签
         """
-        # 从关联标签中提取
+        # 从关联标签中提取 - 使用第一个（优先级最高的）标签
         labels = field.get('associated_labels', [])
         if labels:
-            # 选择最长的标签作为主要标签
-            label_texts = [label.get('text', '').strip() for label in labels if label.get('text', '').strip()]
-            if label_texts:
-                return max(label_texts, key=len)
+            # 获取第一个有效标签（已经按优先级排序）
+            for label in labels:
+                label_text = label.get('text', '').strip()
+                if label_text and label_text not in ['unknown', 'input', 'text']:
+                    return label_text
 
         # fallback到其他属性
-        return (field.get('placeholder', '') or
-                field.get('title', '') or
-                field.get('name', '') or
-                field.get('id', '') or
-                'unknown').strip()
+        fallback_value = (field.get('placeholder', '') or
+                         field.get('title', '') or
+                         field.get('name', '') or
+                         field.get('id', '') or
+                         'unknown').strip()
+
+        return fallback_value
 
     def _create_empty_result(self) -> Dict[str, Any]:
         """创建空结果"""

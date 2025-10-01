@@ -76,6 +76,60 @@ class VisualAnalysisService:
             if not bbox_result.get('success'):
                 raise Exception(f"BBOX提取失败: {bbox_result.get('error')}")
 
+            # 详细打印阶段2结果
+            logger.info("📊 阶段2详细结果分析:")
+            logger.info("=" * 80)
+            elements_data = bbox_result.get('bbox_data', {}).get('elements', [])
+            logger.info(f"总共提取到 {len(elements_data)} 个元素")
+
+            # 统计标签关联情况
+            labeled_count = 0
+            unlabeled_count = 0
+            label_types = {}
+
+            for i, element in enumerate(elements_data):
+                selector = element.get('selector', 'unknown')
+                element_type = element.get('type', 'unknown')
+                associated_labels = element.get('associated_labels', [])
+
+                if associated_labels:
+                    labeled_count += 1
+                    # 统计标签类型
+                    for label in associated_labels:
+                        label_type = label.get('association_type', 'unknown')
+                        label_types[label_type] = label_types.get(label_type, 0) + 1
+                else:
+                    unlabeled_count += 1
+
+                # 打印前20个元素的详细信息
+                if i < 20:
+                    logger.info(f"元素 {i+1}: {selector} ({element_type})")
+                    if associated_labels:
+                        for j, label in enumerate(associated_labels):
+                            label_text = label.get('text', '')
+                            label_type = label.get('association_type', 'unknown')
+                            logger.info(f"  标签{j+1}: '{label_text}' (类型: {label_type})")
+                    else:
+                        logger.info("  ❌ 无关联标签")
+
+                    # 新增：打印容器信息
+                    container_info = element.get('container_info', {})
+                    if container_info.get('groupTitle'):
+                        logger.info(f"  📦 容器分组: '{container_info['groupTitle']}' ({container_info.get('groupType', 'unknown')})")
+                    else:
+                        logger.info(f"  📦 容器分组: ❌ 无分组信息")
+                    logger.info("")
+
+            if len(elements_data) > 20:
+                logger.info(f"... 还有 {len(elements_data) - 20} 个元素未显示")
+
+            logger.info(f"📈 标签关联统计:")
+            logger.info(f"  ✅ 有标签的元素: {labeled_count} 个")
+            logger.info(f"  ❌ 无标签的元素: {unlabeled_count} 个")
+            logger.info(f"  📊 覆盖率: {labeled_count/len(elements_data)*100:.1f}%")
+            logger.info(f"  🏷️ 标签类型分布: {label_types}")
+            logger.info("=" * 80)
+
             # 阶段3: 计算机视觉布局分析 (XY-Cut + 形态学聚类)
             logger.info("🤖 阶段3: 执行CV算法布局分析...")
             visual_layout_result = self._analyze_visual_layout(

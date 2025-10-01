@@ -81,7 +81,6 @@ class XYCutAnalyzer:
                 # 在掩码中标记元素区域
                 mask[y:y+h, x:x+w] = 1
 
-            logger.debug(f"📊 元素掩码创建完成 - 覆盖像素: {np.sum(mask)} / {mask.size}")
             return mask
 
         except Exception as e:
@@ -192,9 +191,6 @@ class XYCutAnalyzer:
             if self.config['merge_close_cuts'] and len(cut_lines) > 1:
                 cut_lines = self._merge_close_cuts(cut_lines)
 
-            direction = "水平" if is_horizontal else "垂直"
-            logger.debug(f"🔪 {direction}切割线: {len(cut_lines)}条 - {cut_lines}")
-
             return cut_lines
 
         except Exception as e:
@@ -242,13 +238,11 @@ class XYCutAnalyzer:
 
             # 递归深度检查
             if depth >= max_depth:
-                logger.debug(f"🛑 达到最大递归深度 {depth}")
                 return [self._create_region_info(region_bbox, depth, "max_depth")]
 
             # 区域大小检查
             if (region_bbox['width'] < min_width or
                 region_bbox['height'] < min_height):
-                logger.debug(f"🛑 区域过小 {region_bbox['width']}x{region_bbox['height']}")
                 return [self._create_region_info(region_bbox, depth, "min_size")]
 
             # 计算水平投影和垂直投影
@@ -261,7 +255,6 @@ class XYCutAnalyzer:
 
             # 如果没有切割线，返回当前区域
             if not h_cuts and not v_cuts:
-                logger.debug(f"🛑 无切割线，返回原区域")
                 return [self._create_region_info(region_bbox, depth, "no_cuts")]
 
             # 选择切割方向：优先选择有更多切割线的方向
@@ -312,7 +305,6 @@ class XYCutAnalyzer:
                     sub_regions.append(sub_region)
             prev_cut = cut_pos
 
-        logger.debug(f"🔪 水平切割 深度{depth}: {len(h_cuts)}条线 → {len(sub_regions)}个子区域")
         return sub_regions
 
     def _vertical_cut(self, region_bbox: Dict[str, int], v_cuts: List[int], depth: int) -> List[Dict[str, int]]:
@@ -344,7 +336,6 @@ class XYCutAnalyzer:
                     sub_regions.append(sub_region)
             prev_cut = cut_pos
 
-        logger.debug(f"🔪 垂直切割 深度{depth}: {len(v_cuts)}条线 → {len(sub_regions)}个子区域")
         return sub_regions
 
     def _create_region_info(self, bbox: Dict[str, int], depth: int, stop_reason: str) -> Dict[str, Any]:

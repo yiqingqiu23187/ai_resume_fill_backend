@@ -206,9 +206,206 @@ class BBoxService:
                     return selector;
                 }
 
+                // 提取元素的容器分组信息
+                function extractContainerInfo(element) {
+                    const containerInfo = {
+                        containers: [],
+                        groupTitle: null,
+                        groupType: 'unknown',
+                        depth: 0
+                    };
+
+                    let current = element.parentElement;
+                    let depth = 0;
+                    const maxDepth = 8; // 限制搜索深度
+
+                    while (current && current !== document.body && depth < maxDepth) {
+                        depth++;
+
+                        // 检查是否是分组容器
+                        const containerType = identifyContainerType(current);
+                        if (containerType) {
+                            const groupTitle = extractGroupTitle(current);
+
+                            containerInfo.containers.push({
+                                element: current.tagName.toLowerCase(),
+                                type: containerType,
+                                title: groupTitle,
+                                class: current.className || '',
+                                depth: depth
+                            });
+
+                            // 使用最近的有标题的容器作为主分组
+                            if (groupTitle && !containerInfo.groupTitle) {
+                                containerInfo.groupTitle = groupTitle;
+                                containerInfo.groupType = containerType;
+                                containerInfo.depth = depth;
+                            }
+                        }
+
+                        current = current.parentElement;
+                    }
+
+                    return containerInfo;
+                }
+
+                // 识别容器类型
+                function identifyContainerType(element) {
+                    const tagName = element.tagName.toLowerCase();
+                    const className = element.className.toLowerCase();
+                    const id = element.id.toLowerCase();
+
+                    // 标准表单分组元素
+                    if (tagName === 'fieldset') return 'fieldset';
+                    if (tagName === 'form') return 'form';
+
+                    // 基于class名称判断（更宽松的匹配）
+                    const groupPatterns = [
+                        'section', 'group', 'panel', 'block', 'item', 'area',
+                        'container', 'wrapper', 'box', 'card', 'module', 'part',
+                        'row', 'col', 'field', 'form', 'input', 'control'
+                    ];
+
+                    for (const pattern of groupPatterns) {
+                        if (className.includes(pattern) || id.includes(pattern)) {
+                            return pattern;
+                        }
+                    }
+
+                    // 表格结构 - 优先检查，因为表格通常有明确的分组
+                    if (tagName === 'table') return 'table';
+                    if (tagName === 'tbody' || tagName === 'thead') return 'table-section';
+                    if (tagName === 'tr') return 'table-row';
+                    if (tagName === 'td' || tagName === 'th') return 'table-cell';
+
+                    // 任何包含表单元素的div（更宽松）
+                    if (tagName === 'div' || tagName === 'section') {
+                        const hasFormElements = element.querySelectorAll('input,textarea,select,button').length > 0;
+                        if (hasFormElements) {
+                            return 'form-container';
+                        }
+                    }
+
+                    // 包含标题的容器
+                    if ((tagName === 'div' || tagName === 'section') &&
+                        element.querySelector('h1,h2,h3,h4,h5,h6,legend,.title,.header')) {
+                        return 'titled-container';
+                    }
+
+                    return null;
+                }
+
+                // 提取分组标题
+                function extractGroupTitle(container) {
+                    const tagName = container.tagName.toLowerCase();
+
+                    // 1. 查找明确的标题元素
+                    const titleSelectors = [
+                        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                        'legend', 'label.group-title', '.title', '.header',
+                        '.section-title', '.panel-title', '.card-title'
+                    ];
+
+                    for (const selector of titleSelectors) {
+                        const titleElement = container.querySelector(selector);
+                        if (titleElement) {
+                            const titleText = titleElement.textContent.trim();
+                            if (titleText && titleText.length > 1 && titleText.length < 50) {
+                                return titleText;
+                            }
+                        }
+                    }
+
+                    // 2. 特殊处理表格结构
+                    if (tagName === 'table') {
+                        // 查找表格标题
+                        const caption = container.querySelector('caption');
+                        if (caption) {
+                            const titleText = caption.textContent.trim();
+                            if (titleText && titleText.length < 50) {
+                                return titleText;
+                            }
+                        }
+
+                        // 使用表格前面的标题
+                        let prev = container.previousElementSibling;
+                        let attempts = 0;
+                        while (prev && attempts < 3) {
+                            const prevText = prev.textContent.trim();
+                            if (prevText && prevText.length > 2 && prevText.length < 30 &&
+                                !/请|选择|输入|提交|保存|点击/.test(prevText)) {
+                                return prevText;
+                            }
+                            prev = prev.previousElementSibling;
+                            attempts++;
+                        }
+
+                        return '表单信息'; // 表格的默认标题
+                    }
+
+                    // 3. 表格行 - 查找行内的主要文本
+                    if (tagName === 'tr') {
+                        const cells = container.querySelectorAll('td, th');
+                        for (const cell of cells) {
+                            const cellText = cell.textContent.trim();
+                            if (cellText && cellText.length > 2 && cellText.length < 20 &&
+                                !/请|选择|输入|提交|保存/.test(cellText)) {
+                                return cellText;
+                            }
+                        }
+                        return '表单行';
+                    }
+
+                    // 4. 基于容器类名推断标题
+                    const className = container.className.toLowerCase();
+                    if (className.includes('personal') || className.includes('basic')) {
+                        return '基本信息';
+                    }
+                    if (className.includes('education') || className.includes('school')) {
+                        return '教育背景';
+                    }
+                    if (className.includes('work') || className.includes('experience')) {
+                        return '工作经历';
+                    }
+                    if (className.includes('skill') || className.includes('ability')) {
+                        return '技能特长';
+                    }
+
+                    // 5. 查找前面的兄弟元素作为标题
+                    let sibling = container.previousElementSibling;
+                    let attempts = 0;
+                    while (sibling && attempts < 2) {
+                        const siblingText = sibling.textContent.trim();
+                        if (siblingText && siblingText.length > 2 && siblingText.length < 30 &&
+                            !/请|选择|输入|提交|保存|点击/.test(siblingText)) {
+                            return siblingText;
+                        }
+                        sibling = sibling.previousElementSibling;
+                        attempts++;
+                    }
+
+                    // 6. 查找直接子元素中的标题文本
+                    for (const child of container.children) {
+                        if (child.children.length === 0) { // 叶子节点
+                            const text = child.textContent.trim();
+                            if (text && text.length > 2 && text.length < 30 &&
+                                !/请|选择|输入|提交|保存/.test(text)) {
+                                return text;
+                            }
+                        }
+                    }
+
+                    // 7. 最后的fallback - 基于容器类型
+                    if (tagName === 'div' && container.querySelectorAll('input,textarea,select').length > 0) {
+                        return '表单区域';
+                    }
+
+                    return null;
+                }
+
                 // 增强的标签关联查找函数
                 function findAssociatedLabels(element) {
-                    const labels = [];
+                    const rawLabels = [];
 
                     // 辅助函数：清理标签文本
                     function cleanLabelText(text) {
@@ -221,19 +418,54 @@ class BBoxService:
                             .trim();
                     }
 
+                    // 辅助函数：检查文本是否是有效标签
+                    function isValidLabelText(text) {
+                        if (!text || text.length < 2 || text.length > 30) return false;
+
+                        // 过滤无效文本模式
+                        const invalidPatterns = [
+                            /^请选择$/, /^--请选择--$/, /^请输入.*[！!]$/,
+                            /^选择文件$/, /^未选择文件$/, /^浏览$/,
+                            /^提交$/, /^保存$/, /^取消$/, /^确定$/, /^重置$/,
+                            /简历完整即可投递/, /中国广核/, /公司$/, /有限公司$/,
+                            /^\d+$/, /^[a-zA-Z]+$/, /^[\u4e00-\u9fa5]{10,}/ // 纯数字、纯英文、过长中文
+                        ];
+
+                        return !invalidPatterns.some(pattern => pattern.test(text));
+                    }
+
                     // 辅助函数：添加标签（避免重复）
-                    function addLabel(text, type) {
+                    function addLabel(text, type, distance = 0) {
                         const cleanText = cleanLabelText(text);
-                        if (cleanText && cleanText.length >= 2 && cleanText.length <= 50) {
+                        if (isValidLabelText(cleanText)) {
                             // 检查是否已存在相同文本
-                            const exists = labels.some(label => label.text === cleanText);
+                            const exists = rawLabels.some(label => label.text === cleanText);
                             if (!exists) {
-                                labels.push({
+                                rawLabels.push({
                                     text: cleanText,
-                                    association_type: type
+                                    association_type: type,
+                                    distance: distance,
+                                    priority: getTypePriority(type)
                                 });
                             }
                         }
+                    }
+
+                    // 标签类型优先级（数字越小优先级越高）
+                    function getTypePriority(type) {
+                        const priorities = {
+                            'for_attribute': 1,
+                            'parent_label': 2,
+                            'antd_framework': 3,
+                            'element_ui_framework': 3,
+                            'iview_framework': 3,
+                            'form_item_pattern': 4,
+                            'table_header': 5,
+                            'sibling_text': 6,
+                            'nearby_text': 8,
+                            'element_attribute': 9
+                        };
+                        return priorities[type] || 10;
                     }
 
                     // 1. 通过for属性关联 (最可靠)
@@ -300,13 +532,14 @@ class BBoxService:
                         });
                     }
 
-                    // 4. 邻近的标签文本（前面的兄弟元素）
+                    // 4. 邻近的兄弟元素标签（更精确的搜索）
                     let sibling = element.previousElementSibling;
                     let siblingCount = 0;
-                    while (sibling && siblingCount < 3) {
+                    while (sibling && siblingCount < 2) { // 减少搜索范围
                         const text = sibling.textContent.trim();
                         if (text && text.length < 50 && !text.includes('\\n')) {
-                            addLabel(text, 'sibling_text');
+                            const distance = siblingCount + 1;
+                            addLabel(text, 'sibling_text', distance);
                         }
                         sibling = sibling.previousElementSibling;
                         siblingCount++;
@@ -335,49 +568,92 @@ class BBoxService:
                         }
                     }
 
-                    // 6. 查找附近的文本节点
-                    function findNearbyTextNodes(element, maxDistance = 3) {
+                    // 6. 查找附近的文本节点（精确范围控制）
+                    function findNearbyTextNodes(element, maxDistance = 1) { // 减少搜索层级
                         const textNodes = [];
+                        const elementRect = element.getBoundingClientRect();
                         let parent = element.parentElement;
 
-                        for (let i = 0; i < maxDistance && parent; i++) {
+                        // 只搜索直接父级，避免过度搜索
+                        if (parent) {
                             const walker = document.createTreeWalker(
                                 parent,
                                 NodeFilter.SHOW_TEXT,
                                 {
                                     acceptNode: (node) => {
                                         const text = node.textContent.trim();
-                                        return text && text.length > 1 && text.length < 30 ?
-                                            NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                                        if (!text || text.length < 2 || text.length > 20) {
+                                            return NodeFilter.FILTER_REJECT;
+                                        }
+
+                                        // 计算与当前元素的距离
+                                        const nodeParent = node.parentElement;
+                                        if (nodeParent) {
+                                            const nodeRect = nodeParent.getBoundingClientRect();
+                                            const distance = Math.sqrt(
+                                                Math.pow(nodeRect.left - elementRect.left, 2) +
+                                                Math.pow(nodeRect.top - elementRect.top, 2)
+                                            );
+
+                                            // 只接受距离较近的文本（像素距离）
+                                            return distance < 200 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+                                        }
+                                        return NodeFilter.FILTER_REJECT;
                                     }
                                 }
                             );
 
                             let node;
                             while (node = walker.nextNode()) {
-                                if (!element.contains(node)) {
-                                    textNodes.push(node);
+                                if (!element.contains(node) && node.parentElement !== element) {
+                                    const nodeParent = node.parentElement;
+                                    const nodeRect = nodeParent.getBoundingClientRect();
+                                    const distance = Math.sqrt(
+                                        Math.pow(nodeRect.left - elementRect.left, 2) +
+                                        Math.pow(nodeRect.top - elementRect.top, 2)
+                                    );
+                                    textNodes.push({node, distance});
                                 }
                             }
-                            parent = parent.parentElement;
                         }
                         return textNodes;
                     }
 
                     const nearbyTextNodes = findNearbyTextNodes(element);
-                    nearbyTextNodes.forEach(node => {
-                        addLabel(node.textContent, 'nearby_text');
-                    });
+                    // 按距离排序，只取最近的3个
+                    nearbyTextNodes
+                        .sort((a, b) => a.distance - b.distance)
+                        .slice(0, 3)
+                        .forEach(({node, distance}) => {
+                            addLabel(node.textContent, 'nearby_text', Math.round(distance));
+                        });
 
                     // 7. 使用元素属性作为fallback
-                    if (labels.length === 0) {
-                        const attrLabel = element.placeholder || element.title || element.getAttribute('data-label') || element.getAttribute('aria-label');
-                        if (attrLabel) {
-                            addLabel(attrLabel, 'element_attribute');
+                    ['name', 'id', 'placeholder', 'title', 'aria-label'].forEach(attr => {
+                        const value = element.getAttribute(attr);
+                        if (value && value.trim()) {
+                            addLabel(value, 'element_attribute', 10);
                         }
-                    }
+                    });
 
-                    return labels;
+                    // 8. 标签优化：排序、去重、限制数量
+                    const optimizedLabels = rawLabels
+                        // 按优先级和距离排序（优先级越小越好，距离越小越好）
+                        .sort((a, b) => {
+                            if (a.priority !== b.priority) {
+                                return a.priority - b.priority;
+                            }
+                            return a.distance - b.distance;
+                        })
+                        // 只保留前3个最佳标签
+                        .slice(0, 3)
+                        // 移除临时属性，只保留必要字段
+                        .map(label => ({
+                            text: label.text,
+                            association_type: label.association_type
+                        }));
+
+                    return optimizedLabels;
                 }
 
                 // 提取表单元素
@@ -418,6 +694,7 @@ class BBoxService:
                                     bottom: Math.round(rect.bottom)
                                 },
                                 associated_labels: findAssociatedLabels(element),
+                                container_info: extractContainerInfo(element),
                                 element_index: index
                             };
 

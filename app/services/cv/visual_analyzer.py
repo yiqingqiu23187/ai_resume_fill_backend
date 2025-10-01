@@ -99,7 +99,6 @@ class VisualLayoutAnalyzer:
                     self.bbox_data,
                     self.config['xy_cut_config']
                 )
-                logger.debug("✅ XY-Cut分析器初始化完成")
 
             if self.config['use_morphology']:
                 image_size = (self.image_height, self.image_width)
@@ -108,7 +107,6 @@ class VisualLayoutAnalyzer:
                     image_size,
                     self.config['morphology_config']
                 )
-                logger.debug("✅ 形态学聚类分析器初始化完成")
 
         except Exception as e:
             logger.error(f"❌ 子分析器初始化失败: {str(e)}")
