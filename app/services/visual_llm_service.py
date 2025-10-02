@@ -18,6 +18,8 @@ import dashscope
 from dashscope import MultiModalConversation
 from playwright.async_api import async_playwright, Browser, Page
 
+from ..schemas.new_visual_analysis import VisualLLMResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,7 +77,19 @@ class VisualLLMService:
             await page.set_content(html_content, wait_until='networkidle')
             await page.wait_for_timeout(2000)  # 等待页面完全渲染
 
-            # 截图
+            # 获取页面实际尺寸
+            page_size = await page.evaluate("""
+                () => {
+                    return {
+                        scrollWidth: document.documentElement.scrollWidth,
+                        scrollHeight: document.documentElement.scrollHeight,
+                        clientWidth: document.documentElement.clientWidth,
+                        clientHeight: document.documentElement.clientHeight
+                    };
+                }
+            """)
+
+            # 截图（全页面）
             screenshot_bytes = await page.screenshot(
                 full_page=True,
                 type='png'
@@ -84,7 +98,7 @@ class VisualLLMService:
 
             # 转换为base64
             screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
-            logger.info("📸 页面截图完成")
+            logger.info(f"📸 页面截图完成 - 实际尺寸: {page_size['scrollWidth']}x{page_size['scrollHeight']}px")
             return screenshot_base64
 
         except Exception as e:
@@ -94,23 +108,21 @@ class VisualLLMService:
     async def analyze_with_visual_llm(
         self,
         screenshot_base64: str,
-        resume_data: Dict[str, Any],
-        field_labels: List[str]
-    ) -> Dict[str, Any]:
+        resume_data: Dict[str, Any]
+    ) -> VisualLLMResult:
         """
         使用视觉大模型分析截图和简历数据
 
         Args:
             screenshot_base64: base64编码的截图
             resume_data: 简历数据
-            field_labels: 表单字段标签列表
 
         Returns:
             分析结果
         """
         try:
             # 构建提示词
-            prompt = self._build_visual_analysis_prompt(resume_data, field_labels)
+            prompt = self._build_visual_analysis_prompt(resume_data)
 
             # 调用Qwen3-VL-Plus
             messages = [
@@ -148,72 +160,70 @@ class VisualLLMService:
                 parsed_result = self._parse_llm_response(result_content)
 
                 logger.info(f"🧠 视觉大模型分析完成，识别字段: {len(parsed_result.get('field_mappings', {}))}")
-                return {
-                    'success': True,
-                    'field_mappings': parsed_result.get('field_mappings', {}),
-                    'analysis_confidence': parsed_result.get('confidence', 0.8),
-                    'raw_response': result_content
-                }
+                return VisualLLMResult(
+                    success=True,
+                    field_mappings=parsed_result.get('field_mappings', {}),
+                    analysis_confidence=parsed_result.get('confidence', 0.8),
+                    raw_response=result_content
+                )
             else:
                 logger.error(f"❌ 大模型API调用失败: {response.message}")
-                return {
-                    'success': False,
-                    'error': f"API调用失败: {response.message}"
-                }
+                return VisualLLMResult(
+                    success=False,
+                    error=f"API调用失败: {response.message}"
+                )
 
         except Exception as e:
             logger.error(f"❌ 视觉大模型分析失败: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            return VisualLLMResult(
+                success=False,
+                error=str(e)
+            )
 
     def _build_visual_analysis_prompt(
         self,
-        resume_data: Dict[str, Any],
-        field_labels: List[str]
+        resume_data: Dict[str, Any]
     ) -> str:
         """构建视觉分析提示词"""
 
-        # 构建简历信息摘要
-        resume_summary = self._build_resume_summary(resume_data)
-
-        # 构建字段列表
-        fields_text = "、".join(field_labels[:20])  # 限制长度避免过长
-        if len(field_labels) > 20:
-            fields_text += f"等共{len(field_labels)}个字段"
+        # 将简历数据转为格式化的JSON字符串
+        import json
+        resume_json = json.dumps(resume_data, ensure_ascii=False, indent=2)
 
         prompt = f"""
-你是一个专业的简历自动填写助手。请分析这个招聘网站的表单截图，结合提供的简历信息，智能匹配表单字段并填写对应的值。
+你是一个专业的简历自动填写助手。请分析这个招聘网站的表单截图，结合提供的简历信息，智能识别表单字段并填写对应的值。
 
-## 简历信息：
-{resume_summary}
-
-## 表单字段列表：
-{fields_text}
+## 简历信息（JSON格式）：
+```json
+{resume_json}
+```
 
 ## 任务要求：
-1. 仔细观察截图中的表单字段和标签
-2. 理解每个字段的含义和要求
-3. 从简历信息中找到对应的值进行匹配
-4. 对于选择类字段（下拉框、单选框等），选择最匹配的选项
-5. 对于特殊字段（如期望薪资、到岗时间等），给出合理的默认值
+1. **仔细观察截图**：识别表单中的所有输入字段、标签文本、下拉选择、单选框等
+2. **理解字段含义**：根据标签文本理解每个字段需要填写什么内容
+3. **智能匹配数据**：从简历JSON数据中找到对应的值进行匹配
+4. **处理选择字段**：对于下拉框、单选框等，选择最匹配的选项值
+5. **生成合理默认值**：对于简历中没有的信息，根据常见情况给出合理默认值
+
+## 常见字段类型和处理：
+- **基本信息**：姓名、性别、年龄、手机号、邮箱、地址等
+- **教育信息**：毕业院校、专业、学历、毕业时间等
+- **工作信息**：工作经验、期望职位、期望薪资等
+- **其他信息**：自我介绍、技能特长、证书等
 
 ## 输出格式：
-请严格按照以下JSON格式输出，不要添加任何其他内容：
+请严格按照以下JSON格式输出，只输出JSON，不要添加任何其他文字：
 
 ```json
 {{
     "field_mappings": {{
-        "字段标签1": "对应的值",
-        "字段标签2": "对应的值",
-        "毕业院校": "北京大学",
+        "姓名": "张小明",
         "学历": "本科",
         "专业": "计算机科学与技术",
-        "姓名": "张三",
-        "手机号": "13800138000"
+        "手机号": "13812345678",
+        "邮箱地址": "zhangxiaoming@example.com"
     }},
-    "confidence": 0.9
+    "confidence": 0.95
 }}
 ```
 
@@ -230,52 +240,6 @@ class VisualLLMService:
 """
         return prompt
 
-    def _build_resume_summary(self, resume_data: Dict[str, Any]) -> str:
-        """构建简历信息摘要"""
-        summary_parts = []
-
-        # 基本信息
-        basic_info = resume_data.get('basic_info', {})
-        if basic_info:
-            summary_parts.append("### 基本信息：")
-            for key, value in basic_info.items():
-                if value:
-                    summary_parts.append(f"- {key}: {value}")
-
-        # 教育经历
-        education = resume_data.get('education', [])
-        if education:
-            summary_parts.append("\n### 教育经历：")
-            for edu in education[:3]:  # 最多显示3个
-                school = edu.get('school', '')
-                major = edu.get('major', '')
-                degree = edu.get('degree', '')
-                period = edu.get('period', '')
-                if school:
-                    summary_parts.append(f"- {school} {major} {degree} ({period})")
-
-        # 工作经验
-        experience = resume_data.get('experience', [])
-        if experience:
-            summary_parts.append("\n### 工作经验：")
-            for exp in experience[:3]:  # 最多显示3个
-                company = exp.get('company', '')
-                position = exp.get('position', '')
-                period = exp.get('period', '')
-                if company:
-                    summary_parts.append(f"- {company} {position} ({period})")
-
-        # 技能特长
-        skills = resume_data.get('skills', [])
-        if skills:
-            summary_parts.append(f"\n### 技能特长：")
-            summary_parts.append(f"- {', '.join(skills[:10])}")  # 最多显示10个技能
-
-        # 如果没有任何信息，返回默认提示
-        if not summary_parts:
-            return "（未提供简历信息）"
-
-        return "\n".join(summary_parts)
 
     def _parse_llm_response(self, response_content: str) -> Dict[str, Any]:
         """解析大模型响应"""

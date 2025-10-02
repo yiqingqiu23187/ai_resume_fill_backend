@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, activation, admin, resumes, matching, unified_visual_analysis
+from app.api.v1.endpoints import auth, users, activation, admin, resumes, matching  # unified_visual_analysis
+from app.api.v1 import visual_analysis
 
 api_router = APIRouter()
 
@@ -10,7 +11,8 @@ api_router.include_router(activation.router, prefix="/activation", tags=["激活
 api_router.include_router(admin.router, prefix="/admin", tags=["管理员"])
 api_router.include_router(resumes.router, prefix="/resumes", tags=["简历管理"])
 api_router.include_router(matching.router, prefix="/matching", tags=["智能匹配"])
-api_router.include_router(unified_visual_analysis.router, prefix="/visual-unified", tags=["统一视觉分析"])
+# api_router.include_router(unified_visual_analysis.router, prefix="/visual-unified", tags=["统一视觉分析"])
+api_router.include_router(visual_analysis.router, prefix="/v2", tags=["新视觉分析"])
 
 @api_router.get("/status")
 async def api_status():

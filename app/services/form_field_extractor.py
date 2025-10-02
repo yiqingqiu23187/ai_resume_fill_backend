@@ -16,6 +16,8 @@ import json
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Browser, Page
 
+from ..schemas.new_visual_analysis import FieldExtractionResult, FormField, AssociatedLabel, SelectOption
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,7 +58,7 @@ class FormFieldExtractor:
         html_content: str,
         viewport_width: int = 1200,
         viewport_height: int = 1400
-    ) -> Dict[str, Any]:
+    ) -> FieldExtractionResult:
         """
         提取表单字段信息
 
@@ -384,22 +386,55 @@ class FormFieldExtractor:
 
             logger.info(f"✅ 字段提取完成: 成功提取 {len(field_data['fields'])} 个表单字段")
 
-            return {
-                'success': True,
-                'fields': field_data['fields'],
-                'metadata': field_data['metadata'],
-                'html_analysis': html_analysis,
-                'total_fields': len(field_data['fields'])
-            }
+            # 转换为Pydantic模型
+            form_fields = []
+            for field_dict in field_data['fields']:
+                # 转换关联标签
+                associated_labels = []
+                for label_data in field_dict.get('associated_labels', []):
+                    associated_labels.append(AssociatedLabel(
+                        text=label_data['text'],
+                        association_type=label_data['association_type']
+                    ))
+
+                # 转换选项
+                options = []
+                for option_data in field_dict.get('options', []):
+                    options.append(SelectOption(
+                        value=option_data['value'],
+                        text=option_data['text'],
+                        selected=option_data.get('selected', False)
+                    ))
+
+                # 创建FormField对象
+                form_field = FormField(
+                    selector=field_dict['selector'],
+                    type=field_dict['type'],
+                    label=field_dict['label'],
+                    required=field_dict.get('required', False),
+                    name=field_dict.get('name', ''),
+                    id=field_dict.get('id', ''),
+                    placeholder=field_dict.get('placeholder', ''),
+                    value=field_dict.get('value', ''),
+                    disabled=field_dict.get('disabled', False),
+                    readonly=field_dict.get('readonly', False),
+                    associated_labels=associated_labels,
+                    options=options
+                )
+                form_fields.append(form_field)
+
+            return FieldExtractionResult(
+                success=True,
+                fields=form_fields
+            )
 
         except Exception as e:
             logger.error(f"❌ 字段提取失败: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'fields': [],
-                'total_fields': 0
-            }
+            return FieldExtractionResult(
+                success=False,
+                error=str(e),
+                fields=[]
+            )
 
     def _analyze_html_structure(self, html_content: str) -> Dict[str, Any]:
         """

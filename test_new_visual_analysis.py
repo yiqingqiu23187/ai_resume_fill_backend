@@ -245,25 +245,25 @@ async def test_phase4_label_matching():
         # 执行匹配
         matching_result = label_matching_service.match_fields(mock_llm_mappings, fields)
 
-        if matching_result['success']:
-            matched = matching_result['matching_results']
-            stats = matching_result['statistics']
+        if matching_result.success:
+            matched = matching_result.matching_results
+            stats = matching_result.statistics
 
             print(f"\n✅ 标签匹配完成:")
-            print(f"  📊 匹配率: {stats['match_rate']:.1%} ({stats['matched_count']}/{stats['total_llm_fields']})")
+            print(f"  📊 匹配率: {stats.match_rate:.1%} ({stats.matched_count}/{stats.total_llm_fields})")
 
             print(f"\n🔍 匹配结果:")
             for i, match in enumerate(matched, 1):
-                print(f"  {i:2d}. {match['llm_label']:<10} → {match['form_label']:<15} | {match['match_type']:<8} | {match['confidence']:.2f}")
+                print(f"  {i:2d}. {match.llm_label:<10} → {match.form_label:<15} | {match.match_type:<8} | {match.confidence:.2f}")
 
-            unmatched_llm = matching_result.get('unmatched_llm_fields', [])
+            unmatched_llm = matching_result.unmatched_llm_fields
             if unmatched_llm:
                 print(f"\n⚠️ 未匹配的大模型字段:")
                 for field in unmatched_llm:
-                    print(f"  - {field['label']}: {field['value']}")
+                    print(f"  - {field.label}: {field.value}")
 
         else:
-            print(f"❌ 标签匹配失败: {matching_result.get('error', '未知错误')}")
+            print(f"❌ 标签匹配失败: {matching_result.error or '未知错误'}")
 
         return matching_result
 
@@ -324,7 +324,7 @@ async def test_full_analysis(enable_llm=False):
                     if matching_results:
                         print(f"\n🎯 成功匹配的字段:")
                         for match in matching_results[:10]:  # 显示前10个
-                            print(f"  - {match['form_label']}: {match['value']} ({match['match_type']})")
+                            print(f"  - {match.form_label}: {match.value} ({match.match_type})")
             else:
                 print(f"\n✅ 表单结构分析成功:")
                 print(f"  - 总字段数: {result.get('total_fields', 0)}")

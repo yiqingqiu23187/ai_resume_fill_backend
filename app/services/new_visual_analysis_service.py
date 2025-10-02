@@ -12,13 +12,15 @@ Phase 5: 精确填写执行 (form_filler_service)
 import logging
 import json
 from typing import Dict, List, Any, Optional
-import os
 from datetime import datetime
 
 from .form_field_extractor import form_field_extractor
 from .visual_llm_service import visual_llm_service
 from .label_matching_service import label_matching_service
 from .form_filler_service import form_filler_service
+
+from ..schemas.new_visual_analysis import VisualAnalysisResult
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +30,8 @@ class NewVisualAnalysisService:
 
     def __init__(self):
         """初始化新视觉分析服务"""
-        # 从环境变量获取DashScope API密钥
-        dashscope_api_key = os.getenv('DASHSCOPE_API_KEY')
+        # 从配置中获取DashScope API密钥
+        dashscope_api_key = settings.DASHSCOPE_API_KEY
         if dashscope_api_key:
             visual_llm_service.api_key = dashscope_api_key
             import dashscope
@@ -43,7 +45,7 @@ class NewVisualAnalysisService:
         resume_data: Dict[str, Any],
         website_url: str = "",
         config: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    ) -> VisualAnalysisResult:
         """
         执行完整的表单分析和填写流程
 
@@ -78,14 +80,15 @@ class NewVisualAnalysisService:
                 viewport_height=final_config['viewport_height']
             )
 
-            if not field_extraction_result['success']:
+            if not field_extraction_result.success:
+                # TODO: 返回简化的错误响应，之后再改为完整的VisualAnalysisResult
                 return {
                     'success': False,
-                    'error': f"字段提取失败: {field_extraction_result.get('error', '未知错误')}",
+                    'error': f"字段提取失败: {field_extraction_result.error or '未知错误'}",
                     'phase': 'field_extraction'
                 }
 
-            fields = field_extraction_result['fields']
+            fields = field_extraction_result.fields
             logger.info(f"✅ Phase 2完成: 提取到 {len(fields)} 个表单字段")
 
             # Phase 1: 网页截图（用于视觉分析）
@@ -107,22 +110,20 @@ class NewVisualAnalysisService:
 
             # Phase 3: 视觉大模型语义理解
             logger.info("🧠 Phase 3: 开始视觉大模型分析...")
-            field_labels = [field['label'] for field in fields if field.get('label')]
 
             llm_analysis_result = await visual_llm_service.analyze_with_visual_llm(
                 screenshot_base64=screenshot_base64,
-                resume_data=resume_data,
-                field_labels=field_labels
+                resume_data=resume_data
             )
 
-            if not llm_analysis_result['success']:
+            if not llm_analysis_result.success:
                 return {
                     'success': False,
-                    'error': f"视觉大模型分析失败: {llm_analysis_result.get('error', '未知错误')}",
+                    'error': f"视觉大模型分析失败: {llm_analysis_result.error or '未知错误'}",
                     'phase': 'visual_llm_analysis'
                 }
 
-            llm_field_mappings = llm_analysis_result['field_mappings']
+            llm_field_mappings = llm_analysis_result.field_mappings
             logger.info(f"✅ Phase 3完成: 大模型识别 {len(llm_field_mappings)} 个字段映射")
 
             # Phase 4: 智能标签匹配
@@ -132,14 +133,14 @@ class NewVisualAnalysisService:
                 form_fields=fields
             )
 
-            if not matching_result['success']:
+            if not matching_result.success:
                 return {
                     'success': False,
-                    'error': f"标签匹配失败: {matching_result.get('error', '未知错误')}",
+                    'error': f"标签匹配失败: {matching_result.error or '未知错误'}",
                     'phase': 'label_matching'
                 }
 
-            matching_results = matching_result['matching_results']
+            matching_results = matching_result.matching_results
             logger.info(f"✅ Phase 4完成: 成功匹配 {len(matching_results)} 个字段")
 
             # Phase 5: 表单填写执行（可选）
@@ -153,10 +154,10 @@ class NewVisualAnalysisService:
                     viewport_height=final_config['viewport_height']
                 )
 
-                if fill_result['success']:
-                    logger.info(f"✅ Phase 5完成: 成功填写 {fill_result['successful_fills']}/{fill_result['total_fields']} 个字段")
+                if fill_result.success:
+                    logger.info(f"✅ Phase 5完成: 成功填写 {fill_result.successful_fills}/{fill_result.total_fields} 个字段")
                 else:
-                    logger.warning(f"⚠️ Phase 5部分失败: {fill_result.get('error', '未知错误')}")
+                    logger.warning(f"⚠️ Phase 5部分失败: {fill_result.error or '未知错误'}")
 
             # 统计最终结果
             end_time = datetime.now()
@@ -174,20 +175,20 @@ class NewVisualAnalysisService:
                         'screenshot_size': len(screenshot_base64) if screenshot_base64 else 0
                     },
                     'phase2_field_extraction': {
-                        'success': field_extraction_result['success'],
+                        'success': field_extraction_result.success,
                         'total_fields': len(fields),
                         'fields_preview': fields[:5]  # 前5个字段预览
                     },
                     'phase3_visual_llm': {
-                        'success': llm_analysis_result['success'],
+                        'success': llm_analysis_result.success,
                         'recognized_fields': len(llm_field_mappings),
-                        'confidence': llm_analysis_result.get('analysis_confidence', 0),
+                        'confidence': llm_analysis_result.analysis_confidence,
                         'field_mappings': llm_field_mappings
                     },
                     'phase4_label_matching': {
-                        'success': matching_result['success'],
+                        'success': matching_result.success,
                         'matched_fields': len(matching_results),
-                        'match_rate': matching_result['statistics']['match_rate'],
+                        'match_rate': matching_result.statistics.match_rate,
                         'matching_results': matching_results
                     },
                     'phase5_form_filling': fill_result if fill_result else {'skipped': True}
@@ -198,20 +199,20 @@ class NewVisualAnalysisService:
                     'total_form_fields': len(fields),
                     'llm_recognized_fields': len(llm_field_mappings),
                     'successfully_matched_fields': len(matching_results),
-                    'fill_success_rate': fill_result['fill_rate'] if fill_result else 0,
+                    'fill_success_rate': fill_result.fill_rate if fill_result else 0,
                     'overall_success_rate': len(matching_results) / len(fields) if fields else 0,
                     'analysis_time_seconds': total_time
                 },
 
                 # 可供扩展使用的脚本
-                'fill_script': fill_result['fill_script'] if fill_result and fill_result.get('fill_script') else None,
+                'fill_script': fill_result.fill_script if fill_result else None,
 
                 # 原始数据（调试用）
                 'debug_info': {
                     'extracted_fields': fields,
-                    'llm_raw_response': llm_analysis_result.get('raw_response', ''),
-                    'unmatched_llm_fields': matching_result.get('unmatched_llm_fields', []),
-                    'unmatched_form_fields': matching_result.get('unmatched_form_fields', [])
+                    'llm_raw_response': llm_analysis_result.raw_response,
+                    'unmatched_llm_fields': matching_result.unmatched_llm_fields,
+                    'unmatched_form_fields': matching_result.unmatched_form_fields
                 }
             }
 
@@ -233,7 +234,7 @@ class NewVisualAnalysisService:
    📋 字段提取: {len(fields)}个
    🧠 大模型识别: {len(llm_field_mappings)}个
    🔍 成功匹配: {len(matching_results)}个
-   🖊️ 填写成功: {fill_result['successful_fills'] if fill_result else 0}个
+   🖊️ 填写成功: {fill_result.successful_fills if fill_result else 0}个
             """)
 
             return final_result
@@ -268,13 +269,13 @@ class NewVisualAnalysisService:
             # 只执行Phase 2
             field_extraction_result = await form_field_extractor.extract_form_fields(html_content)
 
-            if field_extraction_result['success']:
-                fields = field_extraction_result['fields']
+            if field_extraction_result.success:
+                fields = field_extraction_result.fields
 
                 # 按类型分组统计
                 field_types = {}
                 for field in fields:
-                    field_type = field.get('type', 'unknown')
+                    field_type = field.type
                     field_types[field_type] = field_types.get(field_type, 0) + 1
 
                 return {
@@ -283,12 +284,12 @@ class NewVisualAnalysisService:
                     'total_fields': len(fields),
                     'field_types': field_types,
                     'fields': fields,
-                    'html_analysis': field_extraction_result.get('html_analysis', {})
+                    'html_analysis': {}  # TODO: 添加HTML分析信息
                 }
             else:
                 return {
                     'success': False,
-                    'error': field_extraction_result.get('error', '字段提取失败')
+                    'error': field_extraction_result.error or '字段提取失败'
                 }
 
         except Exception as e:

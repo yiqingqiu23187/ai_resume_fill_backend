@@ -15,6 +15,8 @@ import json
 from typing import Dict, List, Any, Optional
 from playwright.async_api import async_playwright, Browser, Page
 
+from ..schemas.new_visual_analysis import FormFillingResult, FillResult, FieldMatchResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,10 +44,10 @@ class FormFillerService:
     async def fill_form(
         self,
         html_content: str,
-        matching_results: List[Dict[str, Any]],
+        matching_results: List[FieldMatchResult],
         viewport_width: int = 1200,
         viewport_height: int = 1400
-    ) -> Dict[str, Any]:
+    ) -> FormFillingResult:
         """
         执行表单填写
 
@@ -77,37 +79,49 @@ class FormFillerService:
                 fill_results.append(result)
 
             # 统计填写结果
-            successful_fills = [r for r in fill_results if r['success']]
-            failed_fills = [r for r in fill_results if not r['success']]
+            successful_fills = [r for r in fill_results if r.success]
+            failed_fills = [r for r in fill_results if not r.success]
 
             logger.info(f"✅ 表单填写完成: {len(successful_fills)}/{len(matching_results)} 成功")
 
-            # 生成填写脚本供扩展使用
-            fill_script = self._generate_fill_script(successful_fills)
+            # 生成填写脚本供扩展使用（转换为字典供脚本生成使用）
+            successful_fills_dict = []
+            for fill_result in successful_fills:
+                successful_fills_dict.append({
+                    'selector': fill_result.selector,
+                    'value': fill_result.value,
+                    'type': fill_result.type,
+                    'label': fill_result.label
+                })
+            fill_script = self._generate_fill_script(successful_fills_dict)
 
-            return {
-                'success': True,
-                'total_fields': len(matching_results),
-                'successful_fills': len(successful_fills),
-                'failed_fills': len(failed_fills),
-                'fill_results': fill_results,
-                'fill_script': fill_script,
-                'fill_rate': len(successful_fills) / len(matching_results) if matching_results else 0
-            }
+            return FormFillingResult(
+                success=True,
+                total_fields=len(matching_results),
+                successful_fills=len(successful_fills),
+                failed_fills=len(failed_fills),
+                fill_results=fill_results,
+                fill_script=fill_script,
+                fill_rate=len(successful_fills) / len(matching_results) if matching_results else 0
+            )
 
         except Exception as e:
             logger.error(f"❌ 表单填写失败: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'fill_results': []
-            }
+            return FormFillingResult(
+                success=False,
+                error=str(e),
+                total_fields=0,
+                successful_fills=0,
+                failed_fills=0,
+                fill_results=[],
+                fill_rate=0.0
+            )
 
     async def _fill_single_field(
         self,
         page: Page,
-        match_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        match_result: FieldMatchResult
+    ) -> FillResult:
         """
         填写单个字段
 
@@ -118,10 +132,10 @@ class FormFillerService:
         Returns:
             填写结果
         """
-        selector = match_result['selector']
-        value = match_result['value']
-        field_type = match_result.get('type', 'text')
-        form_label = match_result.get('form_label', '')
+        selector = match_result.selector
+        value = match_result.value
+        field_type = match_result.type
+        form_label = match_result.form_label
 
         try:
             # 等待元素出现
@@ -144,34 +158,34 @@ class FormFillerService:
 
             if success:
                 logger.info(f"✅ 字段填写成功: {form_label} = {value}")
-                return {
-                    'success': True,
-                    'selector': selector,
-                    'value': value,
-                    'type': field_type,
-                    'label': form_label
-                }
+                return FillResult(
+                    success=True,
+                    selector=selector,
+                    value=value,
+                    type=field_type,
+                    label=form_label
+                )
             else:
                 logger.warning(f"⚠️ 字段填写失败: {form_label}")
-                return {
-                    'success': False,
-                    'selector': selector,
-                    'value': value,
-                    'type': field_type,
-                    'label': form_label,
-                    'error': '填写操作失败'
-                }
+                return FillResult(
+                    success=False,
+                    selector=selector,
+                    value=value,
+                    type=field_type,
+                    label=form_label,
+                    error='填写操作失败'
+                )
 
         except Exception as e:
             logger.error(f"❌ 字段填写异常: {form_label} - {str(e)}")
-            return {
-                'success': False,
-                'selector': selector,
-                'value': value,
-                'type': field_type,
-                'label': form_label,
-                'error': str(e)
-            }
+            return FillResult(
+                success=False,
+                selector=selector,
+                value=value,
+                type=field_type,
+                label=form_label,
+                error=str(e)
+            )
 
     async def _fill_text_field(self, page: Page, selector: str, value: str) -> bool:
         """填写文本字段"""

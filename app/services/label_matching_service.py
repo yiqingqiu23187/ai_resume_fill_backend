@@ -15,6 +15,11 @@ from typing import Dict, List, Any, Tuple, Optional
 from difflib import SequenceMatcher
 import jieba
 
+from ..schemas.new_visual_analysis import (
+    LabelMatchingResult, FieldMatchResult, UnmatchedField,
+    MatchingStatistics, FormField
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,9 +74,9 @@ class LabelMatchingService:
 
     def match_fields(
         self,
-        llm_field_mappings: Dict[str, Any],
-        form_fields: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        llm_field_mappings: Dict[str, str],
+        form_fields: List[FormField]
+    ) -> LabelMatchingResult:
         """
         匹配字段
 
@@ -86,7 +91,7 @@ class LabelMatchingService:
             logger.info(f"🔍 开始字段匹配: LLM识别{len(llm_field_mappings)}个字段, 表单有{len(form_fields)}个字段")
 
             # 构建表单字段标签索引
-            form_field_labels = {field['label']: field for field in form_fields}
+            form_field_labels = {field.label: field for field in form_fields}
 
             matching_results = []
             unmatched_llm_fields = []
@@ -98,25 +103,25 @@ class LabelMatchingService:
 
                 if best_match:
                     match_info, form_field = best_match
-                    matching_results.append({
-                        'selector': form_field['selector'],
-                        'type': form_field.get('type', 'text'),
-                        'llm_label': llm_label,
-                        'form_label': form_field['label'],
-                        'value': llm_value,
-                        'match_type': match_info['match_type'],
-                        'confidence': match_info['confidence'],
-                        'required': form_field.get('required', False)
-                    })
+                    matching_results.append(FieldMatchResult(
+                        selector=form_field.selector,
+                        type=form_field.type,
+                        llm_label=llm_label,
+                        form_label=form_field.label,
+                        value=llm_value,
+                        match_type=match_info['match_type'],
+                        confidence=match_info['confidence'],
+                        required=form_field.required
+                    ))
 
                     # 从未匹配列表中移除
                     if form_field in unmatched_form_fields:
                         unmatched_form_fields.remove(form_field)
                 else:
-                    unmatched_llm_fields.append({
-                        'label': llm_label,
-                        'value': llm_value
-                    })
+                    unmatched_llm_fields.append(UnmatchedField(
+                        label=llm_label,
+                        value=llm_value
+                    ))
 
             # 统计匹配结果
             total_llm_fields = len(llm_field_mappings)
@@ -125,31 +130,49 @@ class LabelMatchingService:
 
             logger.info(f"✅ 字段匹配完成: {matched_count}/{total_llm_fields} ({match_rate:.1%}) 匹配成功")
 
-            return {
-                'success': True,
-                'matching_results': matching_results,
-                'unmatched_llm_fields': unmatched_llm_fields,
-                'unmatched_form_fields': [
-                    {'selector': f['selector'], 'label': f['label']}
-                    for f in unmatched_form_fields
-                ],
-                'statistics': {
-                    'total_llm_fields': total_llm_fields,
-                    'total_form_fields': len(form_fields),
-                    'matched_count': matched_count,
-                    'match_rate': match_rate,
-                    'unmatched_llm_count': len(unmatched_llm_fields),
-                    'unmatched_form_count': len(unmatched_form_fields)
-                }
-            }
+            # 处理未匹配的表单字段
+            unmatched_form_field_objects = []
+            for field in unmatched_form_fields:
+                unmatched_form_field_objects.append(UnmatchedField(
+                    label=field.label,
+                    selector=field.selector
+                ))
+
+            # 创建统计信息
+            statistics = MatchingStatistics(
+                total_llm_fields=total_llm_fields,
+                total_form_fields=len(form_fields),
+                matched_count=matched_count,
+                match_rate=match_rate,
+                unmatched_llm_count=len(unmatched_llm_fields),
+                unmatched_form_count=len(unmatched_form_fields)
+            )
+
+            return LabelMatchingResult(
+                success=True,
+                matching_results=matching_results,
+                unmatched_llm_fields=unmatched_llm_fields,
+                unmatched_form_fields=unmatched_form_field_objects,
+                statistics=statistics
+            )
 
         except Exception as e:
             logger.error(f"❌ 字段匹配失败: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'matching_results': []
-            }
+            return LabelMatchingResult(
+                success=False,
+                error=str(e),
+                matching_results=[],
+                unmatched_llm_fields=[],
+                unmatched_form_fields=[],
+                statistics=MatchingStatistics(
+                    total_llm_fields=0,
+                    total_form_fields=0,
+                    matched_count=0,
+                    match_rate=0.0,
+                    unmatched_llm_count=0,
+                    unmatched_form_count=0
+                )
+            )
 
     def _find_best_match(
         self,

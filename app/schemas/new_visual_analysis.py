@@ -1,10 +1,10 @@
 """
-新视觉分析方案的数据模型定义
+新视觉分析方案专用的数据模型
 
-定义各个Phase的输入输出Schema，提高类型安全性和可维护性
+基于new_visual_analysis_service.py中实际使用的数据结构定义Pydantic模型
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -35,7 +35,7 @@ class MatchType(str, Enum):
     SEMANTIC = "semantic"
 
 
-# ============ Phase 2: 字段提取 ============
+# ============ FormField 相关 ============
 
 class AssociatedLabel(BaseModel):
     """关联标签信息"""
@@ -50,17 +50,10 @@ class SelectOption(BaseModel):
     selected: bool = Field(default=False, description="是否已选中")
 
 
-class GroupOption(BaseModel):
-    """分组选项（radio/checkbox）"""
-    value: str = Field(..., description="选项值")
-    text: str = Field(..., description="选项显示文本")
-    checked: bool = Field(default=False, description="是否已选中")
-
-
 class FormField(BaseModel):
     """表单字段信息"""
     selector: str = Field(..., description="CSS选择器")
-    type: FieldType = Field(..., description="字段类型")
+    type: str = Field(..., description="字段类型")  # 保持字符串，兼容现有代码
     label: str = Field(..., description="字段标签")
     required: bool = Field(default=False, description="是否必填")
     name: str = Field(default="", description="name属性")
@@ -71,41 +64,18 @@ class FormField(BaseModel):
     readonly: bool = Field(default=False, description="是否只读")
     associated_labels: List[AssociatedLabel] = Field(default_factory=list, description="关联的标签")
     options: List[SelectOption] = Field(default_factory=list, description="下拉选项（仅select类型）")
-    group_options: Optional[List[GroupOption]] = Field(default=None, description="分组选项（radio/checkbox）")
 
 
-class HtmlAnalysis(BaseModel):
-    """HTML静态分析结果"""
-    total_form_elements: int = Field(..., description="表单元素总数")
-    has_forms: bool = Field(..., description="是否包含form标签")
-    page_title: str = Field(default="", description="页面标题")
-    form_elements_preview: List[Dict[str, Any]] = Field(default_factory=list, description="表单元素预览")
-
-
-class FieldExtractionMetadata(BaseModel):
-    """字段提取元数据"""
-    viewport: Dict[str, int] = Field(..., description="视口信息")
-    timestamp: str = Field(..., description="提取时间戳")
-    total_processed: int = Field(..., description="处理的元素总数")
-
+# ============ Phase 2: 字段提取结果 ============
 
 class FieldExtractionResult(BaseModel):
     """Phase 2: 字段提取结果"""
     success: bool = Field(..., description="是否成功")
     fields: List[FormField] = Field(default_factory=list, description="提取的字段列表")
-    metadata: Optional[FieldExtractionMetadata] = Field(default=None, description="提取元数据")
-    html_analysis: Optional[HtmlAnalysis] = Field(default=None, description="HTML分析结果")
-    total_fields: int = Field(default=0, description="字段总数")
     error: Optional[str] = Field(default=None, description="错误信息")
 
 
-# ============ Phase 3: 视觉大模型分析 ============
-
-class LLMFieldMapping(BaseModel):
-    """大模型字段映射"""
-    field_mappings: Dict[str, str] = Field(..., description="字段标签到值的映射")
-    confidence: float = Field(..., description="整体置信度", ge=0.0, le=1.0)
-
+# ============ Phase 3: 视觉大模型分析结果 ============
 
 class VisualLLMResult(BaseModel):
     """Phase 3: 视觉大模型分析结果"""
@@ -116,22 +86,16 @@ class VisualLLMResult(BaseModel):
     error: Optional[str] = Field(default=None, description="错误信息")
 
 
-# ============ Phase 4: 标签匹配 ============
-
-class MatchInfo(BaseModel):
-    """匹配信息"""
-    match_type: MatchType = Field(..., description="匹配类型")
-    confidence: float = Field(..., description="匹配置信度", ge=0.0, le=1.0)
-
+# ============ Phase 4: 标签匹配结果 ============
 
 class FieldMatchResult(BaseModel):
     """单个字段匹配结果"""
     selector: str = Field(..., description="CSS选择器")
-    type: FieldType = Field(..., description="字段类型")
+    type: str = Field(..., description="字段类型")
     llm_label: str = Field(..., description="大模型识别的标签")
     form_label: str = Field(..., description="表单字段标签")
     value: str = Field(..., description="填写值")
-    match_type: MatchType = Field(..., description="匹配类型")
+    match_type: str = Field(..., description="匹配类型")
     confidence: float = Field(..., description="匹配置信度", ge=0.0, le=1.0)
     required: bool = Field(default=False, description="是否必填")
 
@@ -163,14 +127,14 @@ class LabelMatchingResult(BaseModel):
     error: Optional[str] = Field(default=None, description="错误信息")
 
 
-# ============ Phase 5: 表单填写 ============
+# ============ Phase 5: 表单填写结果 ============
 
 class FillResult(BaseModel):
     """单个字段填写结果"""
     success: bool = Field(..., description="是否成功")
     selector: str = Field(..., description="CSS选择器")
     value: str = Field(..., description="填写的值")
-    type: FieldType = Field(..., description="字段类型")
+    type: str = Field(..., description="字段类型")
     label: str = Field(..., description="字段标签")
     error: Optional[str] = Field(default=None, description="错误信息")
 
@@ -187,21 +151,31 @@ class FormFillingResult(BaseModel):
     error: Optional[str] = Field(default=None, description="错误信息")
 
 
-# ============ 整体分析结果 ============
+# ============ 各Phase结果汇总 ============
 
 class PhaseResult(BaseModel):
-    """单个Phase结果"""
+    """单个Phase结果（灵活结构）"""
     success: bool = Field(..., description="是否成功")
-    screenshot_size: Optional[int] = Field(default=None, description="截图大小（Phase 1）")
-    total_fields: Optional[int] = Field(default=None, description="字段总数（Phase 2）")
-    fields_preview: Optional[List[FormField]] = Field(default=None, description="字段预览（Phase 2）")
-    recognized_fields: Optional[int] = Field(default=None, description="识别字段数（Phase 3）")
-    confidence: Optional[float] = Field(default=None, description="置信度（Phase 3）")
-    field_mappings: Optional[Dict[str, str]] = Field(default=None, description="字段映射（Phase 3）")
-    matched_fields: Optional[int] = Field(default=None, description="匹配字段数（Phase 4）")
-    match_rate: Optional[float] = Field(default=None, description="匹配率（Phase 4）")
-    matching_results: Optional[List[FieldMatchResult]] = Field(default=None, description="匹配结果（Phase 4）")
-    skipped: Optional[bool] = Field(default=None, description="是否跳过（Phase 5）")
+    # 其他字段使用动态字典，保持灵活性
+    extra_data: Dict[str, Any] = Field(default_factory=dict, description="额外数据")
+
+    def __init__(self, **data):
+        # 将所有非success的字段放入extra_data
+        success = data.pop('success')
+        extra_data = data
+        super().__init__(success=success, extra_data=extra_data)
+
+    def __getitem__(self, key):
+        """支持字典式访问"""
+        if key == 'success':
+            return self.success
+        return self.extra_data.get(key)
+
+    def get(self, key, default=None):
+        """支持get方法"""
+        if key == 'success':
+            return self.success
+        return self.extra_data.get(key, default)
 
 
 class PhaseResults(BaseModel):
@@ -231,6 +205,8 @@ class DebugInfo(BaseModel):
     unmatched_form_fields: List[UnmatchedField] = Field(default_factory=list, description="未匹配的表单字段")
 
 
+# ============ 完整的视觉分析结果 ============
+
 class VisualAnalysisResult(BaseModel):
     """完整的视觉分析结果"""
     success: bool = Field(..., description="是否成功")
@@ -244,7 +220,7 @@ class VisualAnalysisResult(BaseModel):
     phase: Optional[str] = Field(default=None, description="失败的阶段")
 
 
-# ============ 配置选项 ============
+# ============ 配置 ============
 
 class AnalysisConfig(BaseModel):
     """分析配置"""
@@ -253,13 +229,3 @@ class AnalysisConfig(BaseModel):
     enable_form_filling: bool = Field(default=True, description="是否启用表单填写")
     save_screenshot: bool = Field(default=True, description="是否保存截图")
     save_analysis_result: bool = Field(default=True, description="是否保存分析结果")
-
-
-# ============ 简历数据结构 ============
-
-class ResumeData(BaseModel):
-    """简历数据结构（保持原始JSON格式）"""
-    class Config:
-        extra = "allow"  # 允许额外字段，保持灵活性
-
-    # 这里不定义具体字段，让简历数据保持完全的灵活性
