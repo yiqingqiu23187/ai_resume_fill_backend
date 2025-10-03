@@ -6,7 +6,8 @@ Phase 1: 网页截图
 Phase 2: 完整字段信息提取 (form_field_extractor)
 Phase 3: 视觉大模型语义理解 (visual_llm_service)
 Phase 4: 智能标签匹配 (label_matching_service)
-Phase 5: 精确填写执行 (form_filler_service)
+
+返回匹配结果给前端执行表单填写操作
 """
 
 import logging
@@ -17,7 +18,6 @@ from datetime import datetime
 from .form_field_extractor import form_field_extractor
 from .visual_llm_service import visual_llm_service
 from .label_matching_service import label_matching_service
-from .form_filler_service import form_filler_service
 
 from ..schemas.new_visual_analysis import VisualAnalysisResult
 from ..core.config import settings
@@ -47,7 +47,7 @@ class NewVisualAnalysisService:
         config: Optional[Dict[str, Any]] = None
     ) -> VisualAnalysisResult:
         """
-        执行完整的表单分析和填写流程
+        执行完整的表单分析流程
 
         Args:
             html_content: HTML页面内容
@@ -56,7 +56,7 @@ class NewVisualAnalysisService:
             config: 配置参数
 
         Returns:
-            完整的分析和填写结果
+            完整的分析结果（包含匹配的字段信息，供前端执行填写）
         """
         start_time = datetime.now()
         logger.info(f"🚀 开始新方案视觉分析流程: {website_url}")
@@ -65,7 +65,6 @@ class NewVisualAnalysisService:
         default_config = {
             'viewport_width': 1200,
             'viewport_height': 1400,
-            'enable_form_filling': True,
             'save_screenshot': True,
             'save_analysis_result': True
         }
@@ -81,7 +80,6 @@ class NewVisualAnalysisService:
             )
 
             if not field_extraction_result.success:
-                # TODO: 返回简化的错误响应，之后再改为完整的VisualAnalysisResult
                 return {
                     'success': False,
                     'error': f"字段提取失败: {field_extraction_result.error or '未知错误'}",
@@ -143,22 +141,6 @@ class NewVisualAnalysisService:
             matching_results = matching_result.matching_results
             logger.info(f"✅ Phase 4完成: 成功匹配 {len(matching_results)} 个字段")
 
-            # Phase 5: 表单填写执行（可选）
-            fill_result = None
-            if final_config['enable_form_filling'] and matching_results:
-                logger.info("🖊️ Phase 5: 开始表单填写...")
-                fill_result = await form_filler_service.fill_form(
-                    html_content=html_content,
-                    matching_results=matching_results,
-                    viewport_width=final_config['viewport_width'],
-                    viewport_height=final_config['viewport_height']
-                )
-
-                if fill_result.success:
-                    logger.info(f"✅ Phase 5完成: 成功填写 {fill_result.successful_fills}/{fill_result.total_fields} 个字段")
-                else:
-                    logger.warning(f"⚠️ Phase 5部分失败: {fill_result.error or '未知错误'}")
-
             # 统计最终结果
             end_time = datetime.now()
             total_time = (end_time - start_time).total_seconds()
@@ -190,8 +172,7 @@ class NewVisualAnalysisService:
                         'matched_fields': len(matching_results),
                         'match_rate': matching_result.statistics.match_rate,
                         'matching_results': matching_results
-                    },
-                    'phase5_form_filling': fill_result if fill_result else {'skipped': True}
+                    }
                 },
 
                 # 关键统计
@@ -199,13 +180,9 @@ class NewVisualAnalysisService:
                     'total_form_fields': len(fields),
                     'llm_recognized_fields': len(llm_field_mappings),
                     'successfully_matched_fields': len(matching_results),
-                    'fill_success_rate': fill_result.fill_rate if fill_result else 0,
-                    'overall_success_rate': len(matching_results) / len(fields) if fields else 0,
+                    'match_success_rate': len(matching_results) / len(fields) if fields else 0,
                     'analysis_time_seconds': total_time
                 },
-
-                # 可供扩展使用的脚本
-                'fill_script': fill_result.fill_script if fill_result else None,
 
                 # 原始数据（调试用）
                 'debug_info': {
@@ -217,7 +194,7 @@ class NewVisualAnalysisService:
             }
 
             # 生成总结报告
-            success_rate = final_result['statistics']['overall_success_rate']
+            success_rate = final_result['statistics']['match_success_rate']
             if success_rate >= 0.8:
                 status = "🎉 优秀"
             elif success_rate >= 0.6:
@@ -228,13 +205,13 @@ class NewVisualAnalysisService:
                 status = "❌ 较差"
 
             logger.info(f"""
-🎯 新方案分析完成报告:
-   📊 总体成功率: {success_rate:.1%} {status}
+🎯 智能表单分析完成报告:
+   📊 匹配成功率: {success_rate:.1%} {status}
    ⏱️ 分析耗时: {total_time:.2f}秒
    📋 字段提取: {len(fields)}个
    🧠 大模型识别: {len(llm_field_mappings)}个
    🔍 成功匹配: {len(matching_results)}个
-   🖊️ 填写成功: {fill_result.successful_fills if fill_result else 0}个
+   🎯 结果已返回前端进行填写
             """)
 
             return final_result
@@ -304,7 +281,6 @@ class NewVisualAnalysisService:
         try:
             await form_field_extractor.close_browser()
             await visual_llm_service.close_browser()
-            await form_filler_service.close_browser()
             logger.info("🔒 所有浏览器实例已关闭")
         except Exception as e:
             logger.warning(f"⚠️ 关闭浏览器时出现异常: {str(e)}")

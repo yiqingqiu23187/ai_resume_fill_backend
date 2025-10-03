@@ -22,25 +22,28 @@ from ...services.new_visual_analysis_service import new_visual_analysis_service
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/visual-analysis", tags=["视觉分析"])
+router = APIRouter()
 
 
 @router.post(
     "/analyze",
     response_model=VisualAnalysisResponse,
-    summary="完整的智能表单分析和填写",
+    summary="完整的智能表单分析",
     description="""
-    使用视觉大模型进行完整的表单分析和填写流程：
+    使用视觉大模型进行完整的表单分析流程：
 
     **流程步骤：**
     1. **Phase 1**: 网页截图
     2. **Phase 2**: 表单字段提取
     3. **Phase 3**: 视觉大模型语义理解
     4. **Phase 4**: 智能标签匹配
-    5. **Phase 5**: 表单填写执行（可选）
+
+    **返回结果：**
+    - 匹配的字段信息（包含selector和value）
+    - 由前端执行表单填写操作
 
     **适用场景：**
-    - 招聘网站自动填写
+    - 招聘网站表单分析
     - 表单数据智能匹配
     - 批量表单处理
 
