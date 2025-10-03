@@ -12,7 +12,9 @@ from app.models.user import User
 from app.services.matching_service import MatchingService
 from app.schemas.matching import (
     HTMLAnalysisRequest,
-    HTMLAnalysisResponse
+    HTMLAnalysisResponse,
+    FieldMatchRequest,
+    FieldMatchResponse
 )
 
 router = APIRouter()
@@ -187,4 +189,50 @@ async def analyze_html_form(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"HTML分析失败: {str(e)}"
+        )
+
+
+@router.post("/match-fields", response_model=FieldMatchResponse)
+async def match_fields(
+    request: FieldMatchRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    🎯 新功能：字段智能匹配（方案二）
+    前端扫描字段后，发送字段列表，后端用AI匹配简历数据
+    """
+    logger.info(f"🚀 字段匹配请求 - 用户:{current_user.id}, 简历:{request.resume_id}, 字段数:{len(request.fields)}")
+
+    try:
+        # 调用字段匹配服务
+        success, matched_fields, error_message = await MatchingService.match_fields_with_llm(
+            db=db,
+            user_id=current_user.id,
+            resume_id=request.resume_id,
+            fields=request.fields
+        )
+
+        if not success:
+            logger.warning(f"⚠️ 字段匹配失败 - 用户:{current_user.id}, 错误:{error_message}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message
+            )
+
+        logger.info(f"✅ 字段匹配成功 - 用户:{current_user.id}, 匹配字段数:{len(matched_fields)}")
+
+        return FieldMatchResponse(
+            success=True,
+            matched_fields=matched_fields,
+            error_message=None
+        )
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"❌ 字段匹配异常 - 用户:{current_user.id}, 异常:{str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"字段匹配失败: {str(e)}"
         )

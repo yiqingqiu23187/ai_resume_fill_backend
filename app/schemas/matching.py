@@ -59,3 +59,31 @@ class HTMLAnalysisResponse(BaseModel):
     matched_fields: int = Field(..., description="成功匹配的字段数")
     form_structure: Optional[Dict[str, Any]] = Field(None, description="表单结构分析结果")
     error_message: Optional[str] = Field(None, description="错误信息")
+
+
+# 🎯 新增：字段匹配相关的Schema（方案二）
+class FieldInfo(BaseModel):
+    """前端扫描的字段信息"""
+    selector: str = Field(..., description="CSS选择器")
+    label: str = Field(..., description="字段标签")
+    placeholder: Optional[str] = Field(None, description="占位符")
+    options: Optional[List[str]] = Field(None, description="select字段的选项列表（文本数组）")
+
+
+class FieldMatchRequest(BaseModel):
+    """字段匹配请求"""
+    fields: List[FieldInfo] = Field(..., description="前端扫描的字段列表")
+    resume_id: UUID = Field(..., description="简历ID")
+
+
+class MatchedField(BaseModel):
+    """匹配后的字段"""
+    selector: str = Field(..., description="CSS选择器")
+    matched_value: Any = Field(..., description="匹配到的值")
+
+
+class FieldMatchResponse(BaseModel):
+    """字段匹配响应"""
+    success: bool = Field(..., description="匹配是否成功")
+    matched_fields: List[MatchedField] = Field(..., description="匹配结果列表")
+    error_message: Optional[str] = Field(None, description="错误信息")

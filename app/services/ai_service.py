@@ -666,3 +666,164 @@ HTML表单内容：
             error_msg = f"AI HTML分析输出解析失败: {str(e)}"
             logger.error(f"{error_msg}, 原始输出前500字符: {ai_output[:500]}...")
             return {"success": False, "error": error_msg}
+
+
+    @staticmethod
+    async def match_fields_with_resume(
+        fields: List[Any],
+        resume_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        🎯 使用大模型匹配字段与简历数据（方案二）
+
+        Args:
+            fields: 前端扫描的字段列表
+            resume_data: 简历数据（JSON格式）
+
+        Returns:
+            匹配结果字典
+        """
+        try:
+            logger.info(f"🔥 AIService开始字段匹配 - 字段数:{len(fields)}, 简历数据类型:{type(resume_data)}")
+
+            # 构建匹配提示词
+            prompt = AIService._build_field_matching_prompt(fields, resume_data)
+            logger.info(f"✅ 提示词构建完成 - 长度:{len(prompt)}")
+            logger.debug(f"📝 完整Prompt内容:\n{prompt}")
+
+            # 调用千问API（流式）
+            logger.info(f"🤖 开始调用千问API - 模型:{settings.AI_MODEL}")
+
+            responses = Generation.call(
+                model=settings.AI_MODEL,
+                prompt=prompt,
+                api_key=settings.DASHSCOPE_API_KEY,
+                stream=True
+            )
+
+            # 收集流式响应
+            ai_output = ""
+            chunk_count = 0
+
+            for response in responses:
+                if response.status_code == 200:
+                    ai_output = response.output.text
+                    chunk_count += 1
+                else:
+                    error_msg = f"流式响应错误 - 状态码:{response.status_code}"
+                    logger.error(f"❌ {error_msg}")
+                    raise Exception(error_msg)
+
+            logger.info(f"✅ 流式接收完成 - 共接收 {chunk_count} 个数据块")
+            logger.info(f"📝 AI最终输出:\n{ai_output}")
+
+            # 解析AI输出
+            result = AIService._parse_field_matching_output(ai_output)
+            logger.info(f"🎉 字段匹配完成 - 成功:{result.get('success', False)}")
+
+            return result
+
+        except Exception as e:
+            error_msg = f"字段匹配异常 - 类型:{type(e).__name__}, 信息:{str(e)}"
+            logger.error(f"❌ {error_msg}", exc_info=True)
+            return {"success": False, "error": error_msg}
+
+
+    @staticmethod
+    def _build_field_matching_prompt(fields: List[Any], resume_data: Dict[str, Any]) -> str:
+        """构建字段匹配的提示词"""
+
+        # 将fields转换为简洁格式（只保留有值的字段）
+        simplified_fields = []
+        for f in fields:
+            field_dict = {
+                "selector": f.selector if hasattr(f, 'selector') else f.get('selector'),
+                "label": f.label if hasattr(f, 'label') else f.get('label')
+            }
+
+            # 只在有值时添加placeholder
+            placeholder = f.placeholder if hasattr(f, 'placeholder') else f.get('placeholder')
+            if placeholder:
+                field_dict["placeholder"] = placeholder
+
+            # 只在有值时添加options
+            options = f.options if hasattr(f, 'options') else f.get('options')
+            if options:
+                field_dict["options"] = options
+
+            simplified_fields.append(field_dict)
+
+        fields_json = json.dumps(simplified_fields, ensure_ascii=False, indent=2)
+        resume_json = json.dumps(resume_data, ensure_ascii=False, indent=2)
+
+        prompt = f"""你是一个简历数据匹配专家。
+
+【任务】
+将用户的简历数据匹配到表单字段中。
+
+【输入】
+1. 表单字段列表（包含字段名label、占位符placeholder、下拉选项options）
+2. 用户简历数据（JSON格式）
+
+【输出要求】
+返回JSON数组，每个匹配的字段格式如下：
+{{
+  "selector": "原样返回字段的CSS选择器",
+  "matched_value": "匹配到的值"
+}}
+
+【匹配规则】
+1. 根据label和placeholder识别字段含义（如"姓名"、"性别"、"电话"、"出生日期"等）
+2. 对于有options的select字段，从options数组中选择最匹配的**选项文本**（如"男"、"女"、"上海市"等）
+3. 对于date类型字段，格式化为YYYY-MM-DD
+4. 对于phone/tel字段，直接返回手机号
+5. 对于email字段，直接返回邮箱
+6. 如果简历中没有对应数据，不要返回该字段
+7. 只返回能够匹配的字段，不匹配的字段不要输出
+8. 尽可能多地匹配字段，不要遗漏明显能匹配的信息
+
+【表单字段】
+{fields_json}
+
+【用户简历】
+{resume_json}
+
+请返回匹配结果（仅JSON数组，无需解释）：
+"""
+        return prompt
+
+
+    @staticmethod
+    def _parse_field_matching_output(ai_output: str) -> Dict[str, Any]:
+        """解析AI字段匹配输出"""
+        try:
+            # 提取JSON部分
+            json_start = ai_output.find('[')
+            json_end = ai_output.rfind(']') + 1
+
+            if json_start == -1 or json_end == 0:
+                raise ValueError("AI输出中未找到有效的JSON数组")
+
+            json_str = ai_output[json_start:json_end]
+            matched_array = json.loads(json_str)
+
+            # 验证格式
+            validated_matches = []
+            for match in matched_array:
+                if isinstance(match, dict) and match.get("selector") and "matched_value" in match:
+                    validated_matches.append({
+                        'selector': match['selector'],
+                        'matched_value': match['matched_value']
+                    })
+
+            logger.info(f"字段匹配成功，匹配数量: {len(validated_matches)}")
+
+            return {
+                "success": True,
+                "matched_fields": validated_matches
+            }
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            error_msg = f"AI字段匹配输出解析失败: {str(e)}"
+            logger.error(f"{error_msg}, 原始输出前500字符: {ai_output[:500]}...")
+            return {"success": False, "error": error_msg}

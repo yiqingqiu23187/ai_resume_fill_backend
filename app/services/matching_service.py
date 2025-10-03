@@ -140,3 +140,83 @@ class MatchingService:
         except Exception as e:
             logger.error(f"❌ HTML分析异常 - 用户:{user_id}, 简历:{resume_id}, 异常类型:{type(e).__name__}, 异常信息:{str(e)}", exc_info=True)
             return False, [], None, f"系统错误: {str(e)}"
+
+
+    @staticmethod
+    async def match_fields_with_llm(
+        db: AsyncSession,
+        user_id: UUID,
+        resume_id: UUID,
+        fields: List[Any]
+    ) -> Tuple[bool, List[Dict[str, Any]], str]:
+        """
+        🎯 使用大模型匹配字段（方案二）
+
+        Args:
+            db: 数据库会话
+            user_id: 用户ID
+            resume_id: 简历ID
+            fields: 前端扫描的字段列表
+
+        Returns:
+            Tuple[success, matched_fields, error_message]
+        """
+        try:
+            logger.info(f"🔥 字段匹配请求开始 - 用户:{user_id}, 简历:{resume_id}, 字段数:{len(fields)}")
+
+            # 获取简历数据
+            resume = await ResumeService.get_resume_by_id(db, resume_id, user_id)
+            if not resume:
+                logger.warning(f"❌ 简历不存在 - 用户:{user_id}, 简历:{resume_id}")
+                return False, [], "简历不存在"
+
+            logger.info(f"✅ 成功获取简历数据 - 简历标题:{getattr(resume, 'title', '未知')}")
+
+            # 🔧 检查并使用激活次数（开发环境跳过）
+            if not settings.DEBUG:
+                logger.debug(f"🔒 检查激活次数 - 用户:{user_id}")
+                use_success, use_message = await ActivationService.use_activation(db, user_id)
+                if not use_success:
+                    logger.warning(f"❌ 激活次数不足 - 用户:{user_id}, 消息:{use_message}")
+                    return False, [], f"使用次数不足: {use_message}"
+                logger.info(f"✅ 激活次数检查通过 - 用户:{user_id}")
+            else:
+                logger.info("🔧 DEBUG模式：跳过激活次数检查")
+
+            # 🎯 调用AI服务进行字段匹配
+            logger.info(f"🤖 开始调用AI服务匹配字段 - 用户:{user_id}")
+
+            ai_result = await AIService.match_fields_with_resume(
+                fields=fields,
+                resume_data=resume.fields
+            )
+
+            logger.info(f"🔄 AI服务调用完成 - 用户:{user_id}")
+
+            if not ai_result.get("success", False):
+                error_msg = ai_result.get("error", "AI匹配失败")
+                logger.error(f"❌ AI字段匹配失败 - 用户:{user_id}, 错误:{error_msg}")
+                return False, [], error_msg
+
+            matched_fields = ai_result.get("matched_fields", [])
+            logger.info(f"📊 AI匹配成功 - 用户:{user_id}, 匹配字段:{len(matched_fields)}个")
+
+            # 记录使用日志
+            try:
+                await MatchingService._log_usage(
+                    db=db,
+                    user_id=user_id,
+                    website_url="field_matching",
+                    fields_count=len(fields),
+                    success_count=len(matched_fields)
+                )
+            except Exception as log_error:
+                logger.warning(f"⚠️ 使用日志记录失败 - 用户:{user_id}, 错误:{str(log_error)}")
+
+            logger.info(f"🎉 字段匹配完成 - 用户:{user_id}, 匹配字段:{len(matched_fields)}个")
+
+            return True, matched_fields, None
+
+        except Exception as e:
+            logger.error(f"❌ 字段匹配异常 - 用户:{user_id}, 简历:{resume_id}, 异常:{str(e)}", exc_info=True)
+            return False, [], f"系统错误: {str(e)}"
