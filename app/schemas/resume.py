@@ -19,7 +19,7 @@ class ResumeFieldSchema(BaseModel):
 class ResumeBase(BaseModel):
     """简历基础模型"""
     title: Optional[str] = Field(None, description="简历标题", max_length=200)
-    fields: Dict[str, str] = Field(default_factory=dict, description="简历字段数据")
+    fields: Dict[str, Any] = Field(default_factory=dict, description="简历字段数据（支持嵌套JSON结构）")
 
 
 class ResumeCreate(ResumeBase):
@@ -30,7 +30,7 @@ class ResumeCreate(ResumeBase):
 class ResumeUpdate(BaseModel):
     """简历更新模型"""
     title: Optional[str] = Field(None, description="简历标题", max_length=200)
-    fields: Optional[Dict[str, str]] = Field(None, description="简历字段数据")
+    fields: Optional[Dict[str, Any]] = Field(None, description="简历字段数据（支持嵌套JSON结构）")
 
 
 class Resume(ResumeBase):
