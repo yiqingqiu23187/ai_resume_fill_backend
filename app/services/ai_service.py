@@ -4,6 +4,8 @@ AI服务模块 - 集成阿里千问大模型
 
 import json
 import logging
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Optional, Any, Tuple
 from dashscope import Generation
 from app.core.config import settings
@@ -691,31 +693,37 @@ HTML表单内容：
             logger.info(f"✅ 提示词构建完成 - 长度:{len(prompt)}")
             logger.debug(f"📝 完整Prompt内容:\n{prompt}")
 
-            # 调用千问API（流式）
+            # 调用千问API（非流式，使用线程池）
             logger.info(f"🤖 开始调用千问API - 模型:{settings.AI_MODEL}")
 
-            responses = Generation.call(
-                model=settings.AI_MODEL,
-                prompt=prompt,
-                api_key=settings.DASHSCOPE_API_KEY,
-                stream=True
-            )
+            def call_qianwen_api():
+                """在线程池中执行的千问API调用"""
+                return Generation.call(
+                    model=settings.AI_MODEL,
+                    prompt=prompt,
+                    api_key=settings.DASHSCOPE_API_KEY,
+                    stream=False  # 非流式调用
+                )
 
-            # 收集流式响应
-            ai_output = ""
-            chunk_count = 0
+            # 在线程池中执行API调用，避免阻塞事件循环
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(None, call_qianwen_api)
 
-            for response in responses:
-                if response.status_code == 200:
-                    ai_output = response.output.text
-                    chunk_count += 1
-                else:
-                    error_msg = f"流式响应错误 - 状态码:{response.status_code}"
-                    logger.error(f"❌ {error_msg}")
-                    raise Exception(error_msg)
+            # 处理API响应
+            if response.status_code == 200:
+                # 获取AI输出 - 使用类OpenAI格式
+                ai_output = response.output.choices[0].message.content
+                logger.info(f"✅ API调用成功，输出长度: {len(ai_output)}")
+            else:
+                error_msg = f"API调用失败 - 状态码:{response.status_code}, 错误码:{getattr(response, 'code', 'unknown')}"
+                logger.error(f"❌ {error_msg}")
+                raise Exception(error_msg)
 
-            logger.info(f"✅ 流式接收完成 - 共接收 {chunk_count} 个数据块")
-            logger.info(f"📝 AI最终输出:\n{ai_output}")
+            # 🎯 修复：检查输出是否为空
+            if not ai_output or ai_output.strip() == "":
+                error_msg = "AI返回了空输出"
+                logger.error(f"❌ {error_msg}")
+                return {"success": False, "error": error_msg}
 
             # 解析AI输出
             result = AIService._parse_field_matching_output(ai_output)
@@ -799,6 +807,14 @@ HTML表单内容：
     def _parse_field_matching_output(ai_output: str) -> Dict[str, Any]:
         """解析AI字段匹配输出"""
         try:
+            # 🎯 修复：检查输入是否为空
+            if not ai_output:
+                raise ValueError("AI输出为空或None")
+
+            ai_output = str(ai_output).strip()
+            if not ai_output:
+                raise ValueError("AI输出为空字符串")
+
             # 提取JSON部分
             json_start = ai_output.find('[')
             json_end = ai_output.rfind(']') + 1
@@ -827,5 +843,5 @@ HTML表单内容：
 
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             error_msg = f"AI字段匹配输出解析失败: {str(e)}"
-            logger.error(f"{error_msg}, 原始输出前500字符: {ai_output[:500]}...")
+            logger.error(f"{error_msg}, 原始输出前500字符: {ai_output[:500] if ai_output else 'None'}...")
             return {"success": False, "error": error_msg}
